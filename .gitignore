@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+logs/
+CONVERSATION_HISTORY.md
+bak/
+.codex
