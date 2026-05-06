@@ -1,0 +1,135 @@
+import { useState } from "react";
+import { useStore } from "../store";
+import { api, setApiKey } from "../api/client";
+
+export default function TopBar() {
+  const status = useStore((s) => s.status);
+  const snapshot = useStore((s) => s.snapshot);
+  const toggleWf = useStore((s) => s.toggleWorkflowEditor);
+  const wfOpen = useStore((s) => s.workflowEditorOpen);
+  const setNotice = useStore((s) => s.setNotice);
+  const refresh = useStore((s) => s.refresh);
+
+  const [editingMax, setEditingMax] = useState(false);
+
+  const cfg = snapshot?.config;
+  const totals = snapshot?.totals;
+
+  return (
+    <header className="flex items-center gap-4 px-6 py-3 border-b border-zinc-800 bg-zinc-900/40">
+      <div className="flex items-center gap-2">
+        <div
+          className={`w-2.5 h-2.5 rounded-full ${
+            status === "open"
+              ? "bg-emerald-400 animate-pulse"
+              : status === "connecting"
+                ? "bg-amber-400 animate-pulse"
+                : "bg-rose-500"
+          }`}
+          title={`WebSocket: ${status}`}
+        />
+        <span className="font-semibold tracking-tight">Symphony</span>
+      </div>
+
+      <div className="text-xs text-zinc-400 flex items-center gap-3">
+        <span>
+          tracker:{" "}
+          <span className="text-zinc-200">{cfg?.tracker_kind ?? "—"}</span>
+          {cfg?.tracker_repo ? (
+            <span className="text-zinc-500"> · {cfg.tracker_repo}</span>
+          ) : null}
+        </span>
+        <span>
+          runner:{" "}
+          <span className="text-zinc-200">
+            {cfg?.runner_kind ?? "—"} · {cfg?.runner_model ?? ""}
+          </span>
+        </span>
+        <span>tick: {cfg?.polling_interval_ms ?? "—"}ms</span>
+      </div>
+
+      <div className="flex items-center gap-2 ml-auto">
+        <div className="text-xs text-zinc-400 flex items-center gap-1">
+          <span>max_concurrent:</span>
+          {editingMax ? (
+            <input
+              type="number"
+              defaultValue={cfg?.max_concurrent_agents}
+              autoFocus
+              min={1}
+              max={50}
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-xs w-16"
+              onBlur={() => setEditingMax(false)}
+              onKeyDown={async (e) => {
+                if (e.key === "Enter") {
+                  const v = parseInt((e.target as HTMLInputElement).value, 10);
+                  if (Number.isFinite(v) && v > 0) {
+                    try {
+                      await api.patchConfig({ max_concurrent_agents: v });
+                      void refresh();
+                      setNotice({
+                        kind: "info",
+                        text: `max_concurrent_agents → ${v}`,
+                      });
+                    } catch (err) {
+                      setNotice({ kind: "error", text: (err as Error).message });
+                    }
+                  }
+                  setEditingMax(false);
+                } else if (e.key === "Escape") {
+                  setEditingMax(false);
+                }
+              }}
+            />
+          ) : (
+            <button
+              onClick={() => setEditingMax(true)}
+              className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded px-2 py-0.5 text-zinc-100 transition"
+            >
+              {cfg?.max_concurrent_agents ?? "—"}
+            </button>
+          )}
+        </div>
+
+        <div className="text-xs text-zinc-400 flex items-center gap-3 px-3 border-l border-zinc-800">
+          <span>
+            active{" "}
+            <span className="text-emerald-400 font-medium">
+              {totals?.active_workers ?? 0}
+            </span>
+          </span>
+          <span>
+            released{" "}
+            <span className="text-zinc-200">{totals?.released_today ?? 0}</span>
+          </span>
+        </div>
+
+        <button
+          onClick={() => toggleWf()}
+          className={`px-3 py-1 text-xs rounded transition ${
+            wfOpen
+              ? "bg-amber-500/20 text-amber-300 border border-amber-700"
+              : "bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+          }`}
+          title="Edit WORKFLOW.md"
+        >
+          {wfOpen ? "← Board" : "📝 Workflow"}
+        </button>
+
+        <button
+          onClick={() => {
+            const k = prompt(
+              "Bearer API key for the dashboard (leave empty to clear):",
+              "",
+            );
+            if (k !== null) setApiKey(k);
+          }}
+          className="px-2 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+          title="Set API key"
+        >
+          ⚙
+        </button>
+      </div>
+    </header>
+  );
+}
