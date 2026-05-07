@@ -53,10 +53,12 @@ class WorkflowConfig:
     retry_max_attempts: int = 3
 
     # agent runner backend selection — Symphony spec leaves this open
-    runner_kind: str = "claude_cli"  # "claude_cli" | "anthropic_api" | "echo" (test stub)
+    runner_kind: str = "claude_cli"  # "claude_cli" | "anthropic_api" | "echo" | "opencode"
     runner_command: str | None = None  # Override CLI command if needed
     runner_model: str = "claude-opus-4-7"
     runner_max_tokens: int = 4096
+    runner_provider: str = "anthropic"  # used by opencode (LiteLLM provider)
+    runner_allowed_tools: list[str] | None = None  # None ⇒ runner-specific default
 
     # Handoff state — when agent moves issue here, treat as success (not error)
     handoff_state: str = "in_review"
@@ -173,6 +175,8 @@ def _build_config(fm: dict[str, Any]) -> WorkflowConfig:
     cfg.runner_command = runner.get("command")
     cfg.runner_model = runner.get("model", cfg.runner_model)
     cfg.runner_max_tokens = int(runner.get("max_tokens", cfg.runner_max_tokens))
+    cfg.runner_provider = runner.get("provider", cfg.runner_provider)
+    cfg.runner_allowed_tools = runner.get("allowed_tools", cfg.runner_allowed_tools)
 
     server = fm.get("server", {}) or {}
     cfg.server_port = server.get("port")

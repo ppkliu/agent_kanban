@@ -6,7 +6,7 @@ Public surface:
   * load_workflow / Workflow / WorkflowConfig
   * Tracker protocol, InMemoryTracker, GitHubIssuesTracker
   * WorkspaceManager
-  * AgentRunner protocol, EchoRunner, ClaudeCLIRunner, AnthropicAPIRunner
+  * AgentRunner protocol, EchoRunner, ClaudeCLIRunner, AnthropicAPIRunner, OpenCodeRunner
   * Orchestrator
   * Issue / RunAttempt / RunState models
 """
@@ -17,6 +17,7 @@ from .agent_runner import (
     AnthropicAPIRunner,
     ClaudeCLIRunner,
     EchoRunner,
+    OpenCodeRunner,
     ToolDispatcher,
     build_runner,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "GitHubIssuesTracker",
     "InMemoryTracker",
     "Issue",
+    "OpenCodeRunner",
     "Orchestrator",
     "RunAttempt",
     "RunState",

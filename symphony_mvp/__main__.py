@@ -71,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
         command=cfg.runner_command,
         model=cfg.runner_model,
         max_tokens=cfg.runner_max_tokens,
+        provider=cfg.runner_provider,
+        allowed_tools=cfg.runner_allowed_tools,
     )
     orch = Orchestrator(
         workflow=workflow,

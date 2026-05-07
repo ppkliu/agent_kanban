@@ -267,6 +267,157 @@ class ClaudeCLIRunner:
 
 
 # --------------------------------------------------------------------------- #
+# OpenCode runner — wraps the `opencode` CLI in headless / streaming mode.    #
+# https://github.com/sst/opencode  (provider-agnostic via LiteLLM)             #
+# --------------------------------------------------------------------------- #
+class OpenCodeRunner:
+    """Wraps the opencode CLI in headless / streaming mode.
+
+    opencode is provider-agnostic via LiteLLM; pick provider + model in
+    WORKFLOW.md so the orchestrator-side workflow stays portable. Event
+    semantics are mapped onto AgentEventKind exactly like ClaudeCLIRunner —
+    the only difference is the wire format the binary emits.
+
+    Requirements on the host:
+      * `opencode` CLI installed
+      * Provider credentials available (e.g. ANTHROPIC_API_KEY in env, or
+        configured via ~/.config/opencode/config.json)
+    """
+
+    def __init__(
+        self,
+        *,
+        command: str = "opencode",
+        provider: str = "anthropic",
+        model: str | None = None,
+        allowed_tools: list[str] | None = None,
+    ) -> None:
+        self.command = command
+        self.provider = provider
+        self.model = model
+        self.allowed_tools = allowed_tools or ["bash", "read", "edit", "write"]
+
+    def _build_argv(
+        self, prompt: str, max_turns: int, session_id: str | None
+    ) -> list[str]:
+        argv = [
+            self.command,
+            "run",
+            prompt,
+            "--print",  # NDJSON to stdout instead of TUI
+            "--provider",
+            self.provider,
+            "--max-turns",
+            str(max_turns),
+            "--allowed-tools",
+            ",".join(self.allowed_tools),
+        ]
+        if self.model:
+            argv += ["--model", self.model]
+        if session_id:
+            argv += ["--session", session_id]
+        return argv
+
+    def run(
+        self,
+        *,
+        prompt: str,
+        workspace_path: str,
+        max_turns: int,
+        session_id: str | None = None,
+    ) -> Iterator[AgentEvent]:
+        argv = self._build_argv(prompt, max_turns, session_id)
+        logger.info("Spawning opencode in %s: %s", workspace_path, shlex.join(argv))
+
+        try:
+            proc = subprocess.Popen(
+                argv,
+                cwd=workspace_path,  # SPEC §7 invariant #1
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+        except FileNotFoundError:
+            yield AgentEvent.now(
+                AgentEventKind.ERROR,
+                message=f"`{self.command}` not found on PATH",
+            )
+            return
+
+        yield AgentEvent.now(AgentEventKind.TURN_STARTED, turn=1)
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    logger.debug("Non-JSON line from opencode CLI: %s", line[:120])
+                    continue
+                yield from self._translate(msg)
+        finally:
+            rc = proc.wait()
+            if rc != 0 and rc is not None:
+                err = (proc.stderr.read() if proc.stderr else "") or ""
+                yield AgentEvent.now(
+                    AgentEventKind.ERROR,
+                    message=f"opencode exited {rc}: {err[:500]}",
+                )
+            else:
+                yield AgentEvent.now(AgentEventKind.DONE, reason="agent_finished")
+
+    @staticmethod
+    def _translate(msg: dict[str, Any]) -> Iterator[AgentEvent]:
+        """Translate one opencode NDJSON line into zero or more AgentEvents.
+
+        opencode emits a `kind` (or `type`) discriminator on each line. The
+        exact set of kinds evolves with the CLI; we accept the union of names
+        documented in the adapter design doc and silently drop unknown kinds
+        (matching ClaudeCLIRunner's strategy).
+        """
+        kind = msg.get("kind") or msg.get("type")
+
+        if kind in ("session_start", "init"):
+            yield AgentEvent.now(
+                AgentEventKind.ITEM_STARTED,
+                item_kind="session_start",
+                session_id=msg.get("session_id"),
+            )
+        elif kind in ("assistant_text", "message", "content_delta"):
+            yield AgentEvent.now(
+                AgentEventKind.MESSAGE_DELTA, text=msg.get("text", "")
+            )
+        elif kind in ("tool_call", "tool_use"):
+            yield AgentEvent.now(
+                AgentEventKind.TOOL_CALL,
+                tool=msg.get("name") or msg.get("tool"),
+                tool_use_id=msg.get("id"),
+                input=msg.get("input") or msg.get("arguments"),
+            )
+        elif kind == "tool_result":
+            yield AgentEvent.now(
+                AgentEventKind.TOOL_RESULT,
+                tool_use_id=msg.get("tool_use_id") or msg.get("id"),
+                is_error=bool(msg.get("is_error", False)),
+            )
+        elif kind in ("turn_complete", "turn_done"):
+            yield AgentEvent.now(
+                AgentEventKind.TURN_COMPLETED,
+                cost_usd=msg.get("cost_usd") or msg.get("cost"),
+                num_turns=msg.get("turn") or msg.get("num_turns"),
+                session_id=msg.get("session_id"),
+            )
+        elif kind == "error":
+            yield AgentEvent.now(
+                AgentEventKind.ERROR,
+                message=msg.get("message", "unknown error"),
+            )
+
+
+# --------------------------------------------------------------------------- #
 # Anthropic API runner — direct /v1/messages with a custom tool loop.         #
 # Use this when you want full control over prompt cache, tool schema, etc.    #
 # --------------------------------------------------------------------------- #
@@ -420,12 +571,25 @@ def build_runner(
     command: str | None = None,
     model: str | None = None,
     max_tokens: int = 4096,
+    provider: str = "anthropic",
+    allowed_tools: list[str] | None = None,
 ) -> AgentRunner:
     """Factory used by orchestrator startup to build the configured runner."""
     if kind == "echo":
         return EchoRunner()
     if kind == "claude_cli":
-        return ClaudeCLIRunner(command=command or "claude", model=model)
+        return ClaudeCLIRunner(
+            command=command or "claude",
+            model=model,
+            allowed_tools=allowed_tools,
+        )
     if kind == "anthropic_api":
         return AnthropicAPIRunner(model=model or "claude-opus-4-7", max_tokens=max_tokens)
+    if kind == "opencode":
+        return OpenCodeRunner(
+            command=command or "opencode",
+            provider=provider,
+            model=model,
+            allowed_tools=allowed_tools,
+        )
     raise ValueError(f"Unknown runner kind: {kind!r}")
