@@ -73,47 +73,23 @@
 ## 安裝與快速開始
 
 支援的部署目標是 **Docker Compose** — 一個檔案同時帶起 Dashboard 與沙箱化的
-`opencode` 容器,後者連到本地 LLM endpoint。Native Python 安裝是給開發 / CI 用的。
+`opencode` 容器。完整步驟、配置參考、疑難排解都在:
 
-### Docker (建議)
+- **[Docker 快速啟動指南 (中文)](guide/docker-quickstart.zh-TW.md)**
+- **[Docker quickstart guide (English)](guide/docker-quickstart.md)**
 
-```bash
-git clone <this-repo>
-cd agent_kanban
-
-# 同時拉起兩個容器:
-#   - symphony-dashboard  (FastAPI + React, host :17957 → container :7957)
-#   - symphony-opencode   (sst/opencode, 隔離的 workspace volume)
-#   - SQLite 在具名 volume 裡,重啟後事件 / hint / priority 都還在
-docker-compose up -d
-
-# 開瀏覽器看本機 kanban
-open http://localhost:17957
-```
-
-本地 LLM endpoint (Ollama / vLLM / SGLang / LiteLLM proxy) 透過
-`OPENCODE_BASE_URL` / `OPENCODE_PROVIDER` env var 設給 `symphony-opencode`
-這個 service。Dashboard 容器**沒有任何 outbound 連線**到 cloud API;只有
-opencode 容器會,而且只在你明確指定它時才會。完整 compose 範例見下面
-[Docker 部署](#docker-部署) 段落。
-
-### Native (開發 / CI)
+不需要 Docker、想直接開發 / CI:
 
 ```bash
-# 1. 建立 venv 並安裝相依 (建議用 uv)
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 2. 執行測試 (應該全綠 — 80 = MVP 29 + Dashboard 43 + OpenCode runner 8)
+# 80 = MVP 29 + Dashboard 43 + OpenCode runner 8
 .venv/bin/python -m pytest
 
-# 3. 跑端到端 demo (純記憶體,無外部依賴)
+# 純記憶體 demo,無外部依賴
 .venv/bin/python examples/demo_echo.py
 ```
-
-> Docker scaffolding (`Dockerfile`、`docker-compose.yml`) 是下一個 milestone;
-> 設計記錄在下面 [Docker 部署](#docker-部署) 與
-> [`docs/design/symphony-dashboard-spec.md` §10](design/symphony-dashboard-spec.md)。
 
 ## Symphony Dashboard (autonomy 觀察台)
 
@@ -167,90 +143,6 @@ Dashboard 的設計前提是「agent 自己在做事,operator 是觀察者而不
 - 對 worker 的 cooperative pause/abort 訊號
 
 跟其他 vibe-kanban / ai-agent-board 等專案最大的差別:**Dashboard 對 tracker 也唯讀**。所有跨頁簽到 (狀態轉換、PR link、留言) 都由 agent 透過 `gh` / MCP 工具自己寫回。從來沒有「修改 ticket 的按鈕」 — 這是設計而不是疏漏。
-
-## Docker 部署
-
-建議部署拓撲是**單機兩容器**,透過 docker 內網私有溝通:
-
-```
-                ┌───────────────────────────────────────┐
-  :17957  ◄────►│  symphony-dashboard                   │
-                │    FastAPI + React + SQLite           │
-                │    volumes:                           │
-                │      ./data:/app/data    (dashboard.db)│
-                │      ./WORKFLOW.md:/app/WORKFLOW.md:ro │
-                │      ./workspaces:/app/workspaces      │
-                └────────────────┬──────────────────────┘
-                                 │ 每個 attempt 拉起 / exec opencode
-                                 ▼
-                ┌───────────────────────────────────────┐
-                │  symphony-opencode                    │
-                │    sst/opencode (LiteLLM-backed)      │
-                │    OPENCODE_PROVIDER=ollama (預設)    │
-                │    OPENCODE_BASE_URL=...              │
-                │    跟上面共用 workspace volume          │
-                └───────────────────────────────────────┘
-```
-
-為什麼要拆成兩個容器:
-
-- **爆炸半徑**:opencode 會跑任意工具呼叫 (Bash / Edit / Write)。把它隔到自己的容器裡,即使一個 attempt 被攻陷,看得到的也只有 workspace volume,而不是 dashboard 的 SQLite 與 WORKFLOW.md
-- **Local-first**:dashboard 容器**沒有 outbound network policy**。只有 opencode 容器會連 model endpoint,而且預設是 `host.docker.internal:11434` (host 上的 Ollama)
-- **可重現**:同一份 compose 檔在筆電 / on-prem server / 純離線機器 (側載 GGUF model) 都可以原樣跑
-
-`docker-compose.yml` 骨架 (完整版會跟 Docker scaffolding milestone 一起進來):
-
-```yaml
-services:
-  dashboard:
-    build: .
-    ports: ["17957:7957"]
-    volumes:
-      - ./data:/app/data
-      - ./WORKFLOW.md:/app/WORKFLOW.md:ro
-      - workspaces:/app/workspaces
-    environment:
-      DASHBOARD_API_KEY: ${DASHBOARD_API_KEY:-}
-    networks: [symphony]
-    restart: unless-stopped
-
-  opencode:
-    image: ghcr.io/sst/opencode:latest
-    volumes:
-      - workspaces:/workspaces
-    environment:
-      OPENCODE_PROVIDER: ${OPENCODE_PROVIDER:-ollama}
-      OPENCODE_BASE_URL: ${OPENCODE_BASE_URL:-http://host.docker.internal:11434}
-    networks: [symphony]
-    restart: unless-stopped
-
-volumes:
-  workspaces:
-
-networks:
-  symphony:
-    driver: bridge
-```
-
-`WORKFLOW.md` 一行切到 opencode + 本地模型:
-
-```yaml
-runner:
-  kind: opencode
-  provider: ollama
-  model: qwen2.5-coder:32b
-  allowed_tools: [bash, read, edit, write]
-```
-
-OpenCodeRunner 會在 `symphony-opencode` 容器裡呼叫 opencode CLI (用
-`docker exec` 或 compose-managed ephemeral 都可以,看 runner adapter 怎麼接)。
-切去雲端 (Anthropic / OpenAI) 只要改 `provider:` 跟對應的 API key — 但**那是
-偏離預設路徑**,而不是預設路徑。
-
-> 狀態:Docker scaffolding (`Dockerfile` + `docker-compose.yml`) 是下一個部署
-> milestone。Runner 端的程式碼已經到位 — 見
-> [`OpenCodeRunner`](../symphony_mvp/agent_runner.py) 與設計文件
-> [`docs/design/agent-invocation-and-adapters.md` §3.2](design/agent-invocation-and-adapters.md)。
 
 ## 四種 Runner 切換 (這個 MVP 的核心價值)
 
@@ -423,19 +315,10 @@ orch.add_event_listener(my_listener)
 
 ## 從 MVP 到生產的差距
 
-明說這是 MVP,離真正可生產用還差以下:
-
-| 缺口 | 嚴重度 | 補法 |
-|------|-------|------|
-| Docker scaffolding (`Dockerfile` + `docker-compose.yml`) 還沒進 repo | **高** (文件描述的部署路徑靠它) | 把這兩個檔案落地;CI 加一條 compose up 的 smoke test |
-| Workspace 沙箱 (native 模式只靠 host OS;Docker 模式有容器隔離) | **高** (任何高權限工具場景都關鍵) | Docker scaffolding 一旦落地,`symphony-opencode` 容器就能提供基本隔離;firecracker / gVisor 是進一步升級 |
-| 沒有持久化 retry queue (重啟丟失內存 attempt) | 中 | SQLite WAL 模式存 `_attempts` (Dashboard SQLite 已 WAL) |
-| Linear adapter 只剩 stub | 低 | 對照 GitHub adapter 寫 GraphQL 版本 (~150 行) |
-| `linear_graphql` 動態工具 | 低 | MCP server 包一層 |
-| Prompt injection 防護 | **高** | 在 `render_prompt` 後做 token-level 隔離,或用 system message 強化 |
-| 沒有 tracing/metrics (僅 logs + Dashboard event log) | 中 | 加 OpenTelemetry instrumentation |
-| Permission policy 比 Codex 簡化 | 中 | Claude CLI 的 `--permission-mode` 已涵蓋,opencode 的 `allowed_tools` 補齊;自寫 hook 加 allow-list |
-| Dashboard 多人 RBAC | 低-中 | 目前只有單 token 全有/全無 (spec §7 已留升級空間) |
+從 README 抽出來的「未完成項目」(Docker scaffolding、workspace 沙箱、prompt
+injection 防護、持久化 retry queue、tracing、多人 RBAC 等) 都搬到一份獨立
+文件:**[docs/todolist/post-mvp-gaps.md](todolist/post-mvp-gaps.md)** (目前 3
+高 / 4 中 / 5 低)。
 
 ## 檔案結構
 
@@ -446,10 +329,15 @@ agent_kanban/
 ├── README.md                  # English (this file's parent)
 ├── docs/
 │   ├── README.zh-TW.md        # 你正在看
+│   ├── guide/
+│   │   ├── docker-quickstart.md       # English Docker user guide
+│   │   └── docker-quickstart.zh-TW.md # 中文 Docker 快速啟動指南
 │   ├── design/
-│   │   └── symphony-dashboard-spec.md
+│   │   ├── symphony-dashboard-spec.md
+│   │   └── agent-invocation-and-adapters.md
 │   └── todolist/
-│       └── symphony-dashboard-todolist.md
+│       ├── symphony-dashboard-todolist.md   # P0–W6 sprint plan
+│       └── post-mvp-gaps.md                 # production gaps & roadmap
 ├── symphony_mvp/
 │   ├── __init__.py            # 公開 API
 │   ├── __main__.py            # CLI entry: python -m symphony_mvp

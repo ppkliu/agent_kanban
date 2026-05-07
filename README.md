@@ -86,48 +86,24 @@ Mapping to the SPEC's six layers:
 
 The supported deployment target is **Docker Compose** — one file brings up
 the dashboard plus a sandboxed `opencode` container that talks to a local
-LLM endpoint. Native Python install is provided for development and CI.
+LLM endpoint. Step-by-step instructions, configuration reference, and
+troubleshooting are in:
 
-### Docker (recommended)
+- **[Docker quickstart guide (English)](docs/guide/docker-quickstart.md)**
+- **[Docker 快速啟動指南 (中文)](docs/guide/docker-quickstart.zh-TW.md)**
 
-```bash
-git clone <this-repo>
-cd agent_kanban
-
-# Brings up:
-#   - symphony-dashboard  (FastAPI + React, host :17957 → container :7957)
-#   - symphony-opencode   (sst/opencode, isolated workspace volume)
-#   - SQLite on a named volume so events/hints/priority survive restarts
-docker compose up -d
-
-# Browse the kanban
-open http://localhost:17957
-```
-
-Local LLM endpoint (Ollama / vLLM / SGLang / LiteLLM proxy) is pointed at
-via `OPENCODE_BASE_URL` / `OPENCODE_PROVIDER` env vars on the
-`symphony-opencode` service. The dashboard container itself never opens an
-outbound connection to a cloud API; only the opencode container does, and
-only if you point it at one. See [Docker deployment](#docker-deployment)
-for the full compose example.
-
-### Native (development / CI)
+For development / CI without Docker:
 
 ```bash
-# 1. venv + deps (uv recommended)
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 2. run tests (80 = 29 MVP core + 43 dashboard + 8 opencode runner)
+# 80 tests = 29 MVP core + 43 dashboard + 8 opencode runner
 .venv/bin/python -m pytest
 
-# 3. self-contained end-to-end demo (no external API)
+# self-contained end-to-end demo (no external API)
 .venv/bin/python examples/demo_echo.py
 ```
-
-> The Docker scaffolding (`Dockerfile`, `docker-compose.yml`) is the next
-> milestone; the design is documented in [Docker deployment](#docker-deployment)
-> below and in [`docs/design/symphony-dashboard-spec.md` §10](docs/design/symphony-dashboard-spec.md).
 
 ## Symphony Dashboard (autonomy observatory)
 
@@ -196,99 +172,6 @@ projects: **the dashboard is read-only against the tracker as well.**
 Cross-system writes (state transitions, PR links, comments) are still done
 by the agent itself through `gh` / MCP tools. There is no "edit ticket"
 button anywhere — by design.
-
-## Docker deployment
-
-The recommended deployment topology runs **two containers on a single host**,
-talking through a private docker network:
-
-```
-                ┌───────────────────────────────────────┐
-  :17957  ◄────►│  symphony-dashboard                   │
-                │    FastAPI + React + SQLite           │
-                │    volumes:                           │
-                │      ./data:/app/data    (dashboard.db)│
-                │      ./WORKFLOW.md:/app/WORKFLOW.md:ro │
-                │      ./workspaces:/app/workspaces      │
-                └────────────────┬──────────────────────┘
-                                 │ exec / spawn opencode per attempt
-                                 ▼
-                ┌───────────────────────────────────────┐
-                │  symphony-opencode                    │
-                │    sst/opencode (LiteLLM-backed)      │
-                │    OPENCODE_PROVIDER=ollama (default) │
-                │    OPENCODE_BASE_URL=...              │
-                │    workspace volume shared w/ above   │
-                └───────────────────────────────────────┘
-```
-
-Why separate containers:
-
-- **Blast radius** — opencode runs arbitrary tool calls (Bash, Edit, Write).
-  Putting it in its own container means a compromised attempt can only see
-  the workspace volume, not the dashboard's SQLite or WORKFLOW.md
-- **Local-first** — the dashboard container has **no outbound network
-  policy**. Only the opencode container talks to a model endpoint, and that
-  endpoint defaults to `host.docker.internal:11434` (Ollama on the host)
-- **Reproducibility** — the same compose file works on a laptop, an
-  on-prem server, or an air-gapped machine with a sideloaded GGUF model
-
-`docker-compose.yml` skeleton (full version coming with the Docker
-scaffolding milestone):
-
-```yaml
-services:
-  dashboard:
-    build: .
-    ports: ["17957:7957"]
-    volumes:
-      - ./data:/app/data
-      - ./WORKFLOW.md:/app/WORKFLOW.md:ro
-      - workspaces:/app/workspaces
-    environment:
-      DASHBOARD_API_KEY: ${DASHBOARD_API_KEY:-}
-    networks: [symphony]
-    restart: unless-stopped
-
-  opencode:
-    image: ghcr.io/sst/opencode:latest
-    volumes:
-      - workspaces:/workspaces
-    environment:
-      OPENCODE_PROVIDER: ${OPENCODE_PROVIDER:-ollama}
-      OPENCODE_BASE_URL: ${OPENCODE_BASE_URL:-http://host.docker.internal:11434}
-    networks: [symphony]
-    restart: unless-stopped
-
-volumes:
-  workspaces:
-
-networks:
-  symphony:
-    driver: bridge
-```
-
-`WORKFLOW.md` then selects the opencode runner with a local model:
-
-```yaml
-runner:
-  kind: opencode
-  provider: vllm        # local first; or "anthropic" / "openai" / ...
-  model: qwen3.6:27b
-  allowed_tools: [bash, read, edit, write]
-```
-
-The dashboard's `OpenCodeRunner` invokes the opencode CLI inside the
-`symphony-opencode` container (via `docker exec` or compose-managed
-ephemeral runs — implementation choice handled by the runner adapter).
-Cloud providers (Anthropic, OpenAI) are still selectable by changing
-`provider:` and supplying the corresponding API key — but they are **off
-the default path**, not on it.
-
-> Status: the Docker scaffolding (`Dockerfile` + `docker-compose.yml`) is
-> the next deployment milestone. The runner-side code is already in place
-> — see [`OpenCodeRunner`](symphony_mvp/agent_runner.py) and the design
-> doc [`docs/design/agent-invocation-and-adapters.md` §3.2](docs/design/agent-invocation-and-adapters.md).
 
 ## Four pluggable runners — the core value of this MVP
 
@@ -481,19 +364,11 @@ orch.add_event_listener(my_listener)
 
 ## Gap to production
 
-Honest list of what's still missing:
-
-| Gap | Severity | Fix |
-|---|---|---|
-| Docker scaffolding (`Dockerfile` + `docker-compose.yml`) not yet checked in | **High** (the documented deployment relies on it) | Land the two files; CI smoke test that compose up works |
-| Workspace sandboxing (host OS only when running native; container-isolated under Docker) | **High** (critical for any privileged-tool scenario) | Once Docker scaffolding lands, the `symphony-opencode` container provides isolation; firecracker / gVisor are upgrade paths |
-| In-memory retry queue lost on restart | Medium | Persist `_attempts` in SQLite WAL (dashboard SQLite already WAL) |
-| Linear adapter is a stub | Low | Mirror GitHub adapter as GraphQL (~150 LOC) |
-| `linear_graphql` dynamic tool | Low | Wrap as MCP server |
-| Prompt injection defense | **High** | Token-level isolation post `render_prompt`, or system message hardening |
-| Tracing / metrics (logs + dashboard event log only) | Medium | OpenTelemetry instrumentation |
-| Permission policy simpler than Codex | Medium | Claude CLI's `--permission-mode` covers basics; opencode's `allowed_tools` covers the rest; add allow-list hook |
-| Dashboard multi-user RBAC | Low–Medium | Currently single-token all-or-nothing (spec §7 leaves room to upgrade) |
+The honest list of what's still missing — Docker scaffolding, workspace
+sandboxing, prompt-injection defence, persistent retry queue, tracing,
+multi-user RBAC, and a few smaller items — has its own file:
+**[docs/todolist/post-mvp-gaps.md](docs/todolist/post-mvp-gaps.md)** (3 High,
+4 Medium, 5 Low items at last count).
 
 ## Layout
 
@@ -504,10 +379,15 @@ agent_kanban/
 ├── README.md                  # English (this file)
 ├── docs/
 │   ├── README.zh-TW.md        # 中文版 README
+│   ├── guide/
+│   │   ├── docker-quickstart.md       # English Docker user guide
+│   │   └── docker-quickstart.zh-TW.md # 中文 Docker 快速啟動指南
 │   ├── design/
-│   │   └── symphony-dashboard-spec.md
+│   │   ├── symphony-dashboard-spec.md
+│   │   └── agent-invocation-and-adapters.md
 │   └── todolist/
-│       └── symphony-dashboard-todolist.md
+│       ├── symphony-dashboard-todolist.md   # P0–W6 sprint plan
+│       └── post-mvp-gaps.md                 # production gaps & roadmap
 ├── symphony_mvp/
 │   ├── __init__.py            # public API
 │   ├── __main__.py            # CLI: python -m symphony_mvp
