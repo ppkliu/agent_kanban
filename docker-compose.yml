@@ -1,0 +1,43 @@
+# Single-container dashboard deployment (Phase 1).
+#
+# Bundles the FastAPI dashboard + React SPA + the opencode CLI into one image.
+# A future "two-container split" (post-MVP gap item) will move opencode into
+# its own service for tighter blast-radius isolation; until then, this is the
+# documented and supported deployment shape.
+#
+# Bring it up with:    docker compose up -d
+# Browse at:           http://localhost:17957
+# Stop + clean:        docker compose down -v
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: symphony-dashboard:dev
+    container_name: symphony-dashboard
+    ports:
+      - "17957:7957"          # host → container (see docs/guide/docker-quickstart.md)
+    volumes:
+      - ./data:/app/data                              # SQLite (events / hints / priority / history)
+      - ./WORKFLOW.md:/app/WORKFLOW.md:ro             # hot-reloadable orchestrator policy
+      - workspaces:/app/workspaces                    # per-issue agent workspaces
+    environment:
+      DASHBOARD_API_KEY: ${DASHBOARD_API_KEY:-}
+      OPENCODE_PROVIDER: ${OPENCODE_PROVIDER:-ollama}
+      OPENCODE_BASE_URL: ${OPENCODE_BASE_URL:-http://host.docker.internal:11434}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
+    extra_hosts:
+      # Required for `host.docker.internal` to resolve to the host on Linux
+      # (Docker Desktop on macOS / Windows handles this transparently).
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:7957/healthz').status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  workspaces:
