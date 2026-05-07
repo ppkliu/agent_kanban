@@ -7,6 +7,11 @@ import { useStore } from "../store";
 vi.mock("../api/client", () => ({
   api: {
     patchConfig: vi.fn().mockResolvedValue({ ok: true }),
+    emergencyStop: vi.fn().mockResolvedValue({
+      ok: true,
+      aborted_count: 2,
+      aborted_ids: ["id-MT-1", "id-MT-2"],
+    }),
   },
   setApiKey: vi.fn(),
 }));
@@ -81,5 +86,28 @@ describe("TopBar", () => {
     render(<TopBar />);
     await user.click(screen.getByRole("button", { name: /Workflow/i }));
     expect(useStore.getState().workflowEditorOpen).toBe(true);
+  });
+
+  it("emergency stop calls api when confirmed", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<TopBar />);
+    await user.click(
+      screen.getByRole("button", { name: /Emergency stop all running agents/i }),
+    );
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(api.emergencyStop).toHaveBeenCalledWith("operator emergency stop");
+    confirmSpy.mockRestore();
+  });
+
+  it("emergency stop is a no-op when user cancels confirm", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<TopBar />);
+    await user.click(
+      screen.getByRole("button", { name: /Emergency stop all running agents/i }),
+    );
+    expect(api.emergencyStop).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

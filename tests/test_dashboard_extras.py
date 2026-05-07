@@ -261,3 +261,77 @@ def test_issue_detail_includes_all_attempts_field(app_ctx) -> None:
     body = r.json()
     assert "all_attempts" in body
     assert len(body["all_attempts"]) >= 1
+
+
+# ----------------- Emergency stop (abort_all) -----------------
+
+def test_abort_all_returns_empty_when_nothing_active(app_ctx) -> None:
+    orch = app_ctx["orch"]
+    aborted = orch.abort_all()
+    assert aborted == []
+
+
+def test_abort_all_aborts_running_attempts(app_ctx, tmp_path: Path) -> None:
+    """Stage attempts as RUNNING via direct insertion, then trigger abort_all."""
+    from symphony_mvp.models import RunAttempt, RunState as RS
+
+    orch = app_ctx["orch"]
+    now = datetime.now(timezone.utc)
+    orch._attempts["id-MT-1"] = RunAttempt(  # noqa: SLF001
+        issue_id="id-MT-1",
+        attempt_number=1,
+        state=RS.RUNNING,
+        started_at=now,
+        last_event_at=now,
+    )
+    orch._attempts["id-MT-2"] = RunAttempt(  # noqa: SLF001
+        issue_id="id-MT-2",
+        attempt_number=1,
+        state=RS.CLAIMED,
+        started_at=now,
+        last_event_at=now,
+    )
+    orch._attempts["id-MT-3"] = RunAttempt(  # noqa: SLF001
+        issue_id="id-MT-3",
+        attempt_number=1,
+        state=RS.RETRY_QUEUED,
+        retry_after=now,
+    )
+
+    aborted = orch.abort_all(message="e2e kill switch")
+    assert set(aborted) == {"id-MT-1", "id-MT-2"}
+    # RETRY_QUEUED is preserved (no live worker to terminate)
+    assert orch._attempts["id-MT-3"].state == RS.RETRY_QUEUED  # noqa: SLF001
+    # Idempotent: second call has nothing left to abort
+    assert orch.abort_all() == []
+
+
+def test_emergency_stop_endpoint(app_ctx) -> None:
+    from symphony_mvp.models import RunAttempt, RunState as RS
+
+    orch, client = app_ctx["orch"], app_ctx["client"]
+    now = datetime.now(timezone.utc)
+    orch._attempts["id-MT-1"] = RunAttempt(  # noqa: SLF001
+        issue_id="id-MT-1",
+        attempt_number=1,
+        state=RS.RUNNING,
+        started_at=now,
+        last_event_at=now,
+    )
+
+    r = client.post("/api/v1/emergency_stop", json={"message": "operator panic"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["aborted_count"] == 1
+    assert body["aborted_ids"] == ["id-MT-1"]
+
+
+def test_emergency_stop_endpoint_idempotent_when_idle(app_ctx) -> None:
+    client = app_ctx["client"]
+    r = client.post("/api/v1/emergency_stop", json={})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["aborted_count"] == 0
+    assert body["aborted_ids"] == []
