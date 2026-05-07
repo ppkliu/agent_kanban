@@ -364,11 +364,13 @@ orch.add_event_listener(my_listener)
 
 ## Gap to production
 
-The honest list of what's still missing — Docker scaffolding, workspace
-sandboxing, prompt-injection defence, persistent retry queue, tracing,
-multi-user RBAC, and a few smaller items — has its own file:
-**[docs/todolist/post-mvp-gaps.md](docs/todolist/post-mvp-gaps.md)** (3 High,
-4 Medium, 5 Low items at last count).
+The honest list of what's still missing — workspace sandboxing,
+prompt-injection defence, two-container blast-radius split, persistent retry
+queue, tracing, multi-user RBAC, and a few smaller items — has its own file:
+**[docs/todolist/post-mvp-gaps.md](docs/todolist/post-mvp-gaps.md)** (2 High,
+6 Medium, 5 Low items at last count). Docker scaffolding (Phase 1,
+single-container) has shipped; the two-container split is tracked there as a
+follow-up.
 
 ## Layout
 

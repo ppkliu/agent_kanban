@@ -8,23 +8,26 @@
 
 | Severity | 數量 |
 |----------|------|
-| **High** | 3 |
-| Medium   | 4 |
-| Low      | 3 |
+| **High** | 2 |
+| Medium   | 6 |
+| Low      | 5 |
 
 ---
 
 ## High — 阻塞文件描述的部署路徑或安全紅線
 
-- [ ] **Docker scaffolding** — `Dockerfile` + `docker-compose.yml` 還沒 check in
-  - 文件 ([`docs/guide/docker-quickstart.md`](../guide/docker-quickstart.md))
-    描述的部署路徑都靠這兩個檔案
-  - 同時要在 CI 加一條 `docker compose up -d` 的 smoke test
-  - 影響:`README` / `docs/README.zh-TW.md` 的「Docker (recommended)」段落、
-    user guide 的所有指令都要等這個落地
+- [x] **Docker scaffolding (Phase 1, 單容器)** — `Dockerfile` +
+  `docker-compose.yml` + `.dockerignore` + `.env.example` +
+  `examples/WORKFLOW.docker.md` 已落地
+  - 驗證過:`docker compose build` / `up -d` / `/healthz` / SPA /
+    `which opencode` / `down -v` 全部 OK
+  - CI smoke test 仍是後續工作 (見下方 Medium 項目)
 - [ ] **Workspace 沙箱**
   - Native 模式:只靠 host OS,任何高權限工具場景都關鍵 (privileged Bash / Edit / Write)
-  - Docker 模式:`symphony-opencode` 容器一旦落地就提供基本隔離
+  - Docker 模式 Phase 1 (已落地):workspace 跟 SQLite 都在容器內,但 opencode
+    跟 dashboard 共用同一個 fs namespace,所以隔離只到容器邊界
+  - Docker 模式 Phase 2 (見下方 Medium):雙容器把 opencode 抽出去後,
+    爆炸半徑會縮小到 workspace volume
   - 進階升級路徑:firecracker / gVisor / rootless Docker
 - [ ] **Prompt injection 防護**
   - 在 `render_prompt` 後做 token-level 隔離,或用 system message 強化
@@ -32,6 +35,19 @@
 
 ## Medium — MVP 可上線但長期會痛
 
+- [ ] **Docker scaffolding Phase 2:雙容器爆炸半徑切分** — 把 `opencode` CLI
+  從 dashboard 容器抽離到獨立的 `symphony-opencode` service
+  - 動機:目前 dashboard 容器同時跑 FastAPI 跟 opencode 子行程,任意 tool call
+    跟 SQLite / WORKFLOW.md 共享一個 fs namespace。把 opencode 隔出去可以縮小
+    爆炸半徑。
+  - 主要工作:`OpenCodeRunner` 從 `subprocess.Popen` 改成跨容器呼叫
+    (docker exec 或 compose-managed ephemeral run);要評估 docker socket
+    掛入的安全 trade-off
+  - 對應原本 user guide 描述的雙容器拓撲;Phase 1 已先落單容器版本,
+    這條留作後續工作
+- [ ] **CI smoke test** — `docker compose up -d` 在 GH Actions / 自架 runner 跑
+  - 確認 `/healthz` 200、SPA 載入、`docker compose down -v` 乾淨
+  - 跟現有的 pytest / vitest job 並行
 - [ ] **持久化 retry queue** — 重啟丟失內存 attempt
   - 解法:把 `_attempts` 落到 SQLite WAL (Dashboard SQLite 已 WAL,複用即可)
   - 需要決定:是保留現有的 in-memory 為主、SQLite 為災難復原 backup,
