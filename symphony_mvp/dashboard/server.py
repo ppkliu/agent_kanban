@@ -151,6 +151,10 @@ class AbortIn(BaseModel):
     message: Optional[str] = None
 
 
+class EmergencyStopIn(BaseModel):
+    message: Optional[str] = None
+
+
 class PriorityReorderIn(BaseModel):
     ordered_issue_ids: list[str]
     set_by: str = Field(default="dashboard", max_length=64)
@@ -430,6 +434,23 @@ def post_retry(issue_id: str, request: Request) -> dict[str, Any]:
             status_code=404, detail="issue not in RELEASED state"
         )
     return {"ok": True}
+
+
+@api_router.post("/emergency_stop")
+def post_emergency_stop(
+    body: EmergencyStopIn, request: Request
+) -> dict[str, Any]:
+    """Operator-triggered kill switch: abort every active attempt at once.
+
+    Returns the list of issue_ids that were aborted (may be empty if nothing
+    was running). Idempotent — clicking the button twice will only report
+    aborts on the first call.
+    """
+    state: DashboardAppState = request.app.state.symphony
+    aborted = state.orch.abort_all(
+        message=body.message or "operator emergency stop"
+    )
+    return {"ok": True, "aborted_count": len(aborted), "aborted_ids": aborted}
 
 
 @api_router.post("/priority")

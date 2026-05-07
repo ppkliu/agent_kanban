@@ -153,6 +153,20 @@ export const api = {
     );
   },
 
+  async emergencyStop(message?: string) {
+    return jsonOrThrow<{
+      ok: true;
+      aborted_count: number;
+      aborted_ids: string[];
+    }>(
+      await fetch(`${API_BASE}/emergency_stop`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ message: message ?? null }),
+      }),
+    );
+  },
+
   async reorderPending(orderedIssueIds: string[]) {
     return jsonOrThrow(
       await fetch(`${API_BASE}/priority`, {

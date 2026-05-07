@@ -492,6 +492,26 @@ class Orchestrator:
         self._release(att, TerminalReason.ABORTED, message)
         return True
 
+    def abort_all(
+        self, *, message: str = "operator emergency stop"
+    ) -> list[str]:
+        """Emergency stop: abort every active attempt (CLAIMED or RUNNING).
+
+        Returns the list of issue_ids that were aborted. Idempotent — calling
+        again immediately returns an empty list. RETRY_QUEUED attempts are
+        NOT touched (they have no live worker; pause/resume govern them).
+        """
+        with self._lock:
+            targets = [
+                att for att in self._attempts.values()
+                if att.state in (RunState.CLAIMED, RunState.RUNNING)
+            ]
+        aborted: list[str] = []
+        for att in targets:
+            if self.abort(att.issue_id, message=message):
+                aborted.append(att.issue_id)
+        return aborted
+
     def force_retry(self, issue_id: str) -> bool:
         """Allow a previously RELEASED issue to be re-dispatched.
 

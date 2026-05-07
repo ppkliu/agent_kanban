@@ -105,6 +105,36 @@ export default function TopBar() {
         </div>
 
         <button
+          onClick={async () => {
+            const running = totals?.active_workers ?? 0;
+            const ok = window.confirm(
+              running > 0
+                ? `Emergency stop: abort all ${running} running agent(s)? This cannot be undone.`
+                : "No agents are currently running. Send emergency stop anyway?",
+            );
+            if (!ok) return;
+            try {
+              const r = await api.emergencyStop("operator emergency stop");
+              setNotice({
+                kind: r.aborted_count > 0 ? "info" : "info",
+                text:
+                  r.aborted_count > 0
+                    ? `Emergency stop: aborted ${r.aborted_count} agent(s)`
+                    : "Emergency stop sent — nothing was running",
+              });
+              void refresh();
+            } catch (err) {
+              setNotice({ kind: "error", text: (err as Error).message });
+            }
+          }}
+          className="px-3 py-1 text-xs rounded transition bg-rose-600/20 text-rose-300 border border-rose-700 hover:bg-rose-600/30"
+          title="Abort all currently running agents"
+          aria-label="Emergency stop all running agents"
+        >
+          ⛔ Stop All
+        </button>
+
+        <button
           onClick={() => toggleWf()}
           className={`px-3 py-1 text-xs rounded transition ${
             wfOpen
