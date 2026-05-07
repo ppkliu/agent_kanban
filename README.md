@@ -386,7 +386,8 @@ agent_kanban/
 │   │   └── docker-quickstart.zh-TW.md # 中文 Docker 快速啟動指南
 │   ├── design/
 │   │   ├── symphony-dashboard-spec.md
-│   │   └── agent-invocation-and-adapters.md
+│   │   ├── agent-invocation-and-adapters.md
+│   │   └── opencode-two-container-analysis.md   # Phase 2 cross-container options
 │   └── todolist/
 │       ├── symphony-dashboard-todolist.md   # P0–W6 sprint plan
 │       └── post-mvp-gaps.md                 # production gaps & roadmap

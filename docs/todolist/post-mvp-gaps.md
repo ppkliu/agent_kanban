@@ -40,11 +40,14 @@
   - 動機:目前 dashboard 容器同時跑 FastAPI 跟 opencode 子行程,任意 tool call
     跟 SQLite / WORKFLOW.md 共享一個 fs namespace。把 opencode 隔出去可以縮小
     爆炸半徑。
-  - 主要工作:`OpenCodeRunner` 從 `subprocess.Popen` 改成跨容器呼叫
-    (docker exec 或 compose-managed ephemeral run);要評估 docker socket
-    掛入的安全 trade-off
+  - **Stage 1 (分析,已完成):**
+    [`docs/design/opencode-two-container-analysis.md`](../design/opencode-two-container-analysis.md)
+    比較 5 種跨容器呼叫方案,推薦使用 opencode 自帶的 `serve` HTTP/SSE 介面
+    (§4.3),沒有 docker socket 暴露成本。
+  - **Stage 2 (實作,待開):** 等使用者讀完分析、確認方案後另開 plan:
+    `OpenCodeRunner` 改 httpx + SSE、compose 加第二個 service、新增整合測試
   - 對應原本 user guide 描述的雙容器拓撲;Phase 1 已先落單容器版本,
-    這條留作後續工作
+    Stage 2 完成後 user guide 會切回雙容器圖
 - [ ] **CI smoke test** — `docker compose up -d` 在 GH Actions / 自架 runner 跑
   - 確認 `/healthz` 200、SPA 載入、`docker compose down -v` 乾淨
   - 跟現有的 pytest / vitest job 並行
