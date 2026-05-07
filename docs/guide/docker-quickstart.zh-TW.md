@@ -2,13 +2,13 @@
 
 > English: [docker-quickstart.md](docker-quickstart.md)
 
-這份指南帶你從 `git clone` 一路到 **http://localhost:17957** 看到 Dashboard,
-用的是建議的雙容器部署 (dashboard + 沙箱化的 opencode 跑代碼生成)。
+這份指南帶你從 `git clone` 一路到 **http://localhost:17957** 看到 Dashboard。
 
-> **狀態提醒** — 真正的 `Dockerfile` 與 `docker-compose.yml` 是下一個部署
-> milestone (記錄在 [post-mvp-gaps.md](../todolist/post-mvp-gaps.md))。
-> 下面的 compose 範例反映預定的拓撲;那兩個檔案落地後,這份指南就是直接
-> 可複製貼上的路徑。
+目前 repo 落地的 scaffolding (根目錄的 `Dockerfile` + `docker-compose.yml`)
+是**單容器**版本 — dashboard + 內建 `opencode` CLI 包在同一個 image,workspace
+透過 volume 掛入。原本文件描述的雙容器爆炸半徑切分 (獨立 `symphony-opencode`
+service) 留到 [`post-mvp-gaps.md`](../todolist/post-mvp-gaps.md) 追蹤;那需要
+動到 runner 端的程式碼,不適合在這個 milestone 一起做。
 
 ---
 
@@ -30,15 +30,28 @@ Dashboard 容器**不需要對外網路**,只有 opencode 容器會出去,而且
 git clone <this-repo>
 cd agent_kanban
 
-# (選用) 給 dashboard 加 bearer token
-echo "DASHBOARD_API_KEY=$(openssl rand -hex 32)" > .env
+# 容器需要一個 WORKFLOW.md 可以掛入 (內建範例用 in-memory tracker
+# + opencode + ollama,需要時自行調整)
+cp examples/WORKFLOW.docker.md WORKFLOW.md
+
+# (建議) 從範例複製 .env 並設一個 bearer token
+cp .env.example .env
+echo "DASHBOARD_API_KEY=$(openssl rand -hex 32)" >> .env
 
 docker compose up -d
-docker compose ps          # 兩個容器都應該是 "Up"
+docker compose ps          # dashboard 應該 "Up (health: starting → healthy)"
 docker compose logs -f dashboard
 ```
 
 開瀏覽器到 `http://localhost:17957`,應該會看到 5 欄的 Kanban。
+
+幾條 sanity check:
+
+```bash
+curl -fsS http://localhost:17957/healthz                  # → {"ok": true}
+docker compose exec dashboard which opencode              # → /usr/local/bin/opencode
+docker compose exec dashboard symphony-mvp /app/WORKFLOW.md --validate
+```
 
 ## 3. 配置
 

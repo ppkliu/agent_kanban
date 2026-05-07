@@ -3,14 +3,14 @@
 > 中文版: [docker-quickstart.zh-TW.md](docker-quickstart.zh-TW.md)
 
 This guide gets you from `git clone` to a working dashboard at
-**http://localhost:17957** in a few minutes, using the recommended two-container
-deployment (dashboard + sandboxed opencode for code generation).
+**http://localhost:17957** in a few minutes.
 
-> **Status note** — the actual `Dockerfile` and `docker-compose.yml` are part
-> of the next deployment milestone (tracked in
-> [post-mvp-gaps.md](../todolist/post-mvp-gaps.md)). The compose example below
-> reflects the intended layout; once those files land in the repo, this guide
-> becomes a literal copy-paste path.
+The shipped scaffolding (`Dockerfile` + `docker-compose.yml` at the repo root)
+is **single-container** — dashboard + bundled `opencode` CLI in one image,
+with the workspace mounted as a volume. The originally documented
+two-container blast-radius split (separate `symphony-opencode` service) is
+tracked as a follow-up in [`post-mvp-gaps.md`](../todolist/post-mvp-gaps.md);
+it requires runner-side rework that's out of scope here.
 
 ---
 
@@ -33,15 +33,28 @@ endpoint you point it at.
 git clone <this-repo>
 cd agent_kanban
 
-# (optional) protect the dashboard with a bearer token
-echo "DASHBOARD_API_KEY=$(openssl rand -hex 32)" > .env
+# Provide a WORKFLOW.md the container can mount (the example uses the
+# in-memory tracker + opencode + ollama provider — edit if you need otherwise)
+cp examples/WORKFLOW.docker.md WORKFLOW.md
+
+# (optional but recommended) provide env overrides + a bearer token
+cp .env.example .env
+echo "DASHBOARD_API_KEY=$(openssl rand -hex 32)" >> .env
 
 docker compose up -d
-docker compose ps          # both containers should be "Up"
+docker compose ps          # dashboard should be "Up (health: starting → healthy)"
 docker compose logs -f dashboard
 ```
 
 Open `http://localhost:17957` — you should see the 5-column kanban.
+
+Quick sanity checks:
+
+```bash
+curl -fsS http://localhost:17957/healthz                  # → {"ok": true}
+docker compose exec dashboard which opencode              # → /usr/local/bin/opencode
+docker compose exec dashboard symphony-mvp /app/WORKFLOW.md --validate
+```
 
 ## 3. Configuration
 
