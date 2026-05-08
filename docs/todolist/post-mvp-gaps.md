@@ -9,7 +9,7 @@
 | Severity | 數量 |
 |----------|------|
 | **High** | 2 |
-| Medium   | 6 |
+| Medium   | 7 |
 | Low      | 5 |
 
 ---
@@ -35,6 +35,17 @@
 
 ## Medium — MVP 可上線但長期會痛
 
+- [ ] **Coding Service Tool API (Q3 對齊)** — 對外暴露 6 個語意化 tool
+  (`list_repos` / `inspect_repo` / `submit_coding_task` / `check_task_status` /
+  `get_task_result` / `cancel_task`),讓上游 LLM agent 透過 RESTful function-calling
+  把 Symphony 當 coding backend
+  - **Stage 1 (分析,已完成):** [`docs/design/coding-service-tool-api.md`](../design/coding-service-tool-api.md)
+    把 Q3 (`Q3_OpenCode作為Tool的設計方案.md`) 對齊到 Symphony 既有 orchestrator + bridge,
+    確認 ~90% infrastructure 已存在,只缺對外 RESTful 包裝層 + stage/result 兩個 helper module
+  - **Phase A (MVP endpoints, ~1 day):** 5 個端點上線 (跳過 inspect_repo / mode / idempotency)
+  - **Phase B (polish, ~1 day):** inspect_repo + 完整 stage 翻譯 + result derivation + mode 隔離
+  - **Phase C (per-need):** idempotency / multi-repo / quota / sandbox 三層防線
+  - 跟 Docker Phase 2 完全正交,可平行做
 - [ ] **Docker scaffolding Phase 2:雙容器爆炸半徑切分** — 把 `opencode` CLI
   從 dashboard 容器抽離到獨立的 `symphony-opencode` service
   - 動機:目前 dashboard 容器同時跑 FastAPI 跟 opencode 子行程,任意 tool call

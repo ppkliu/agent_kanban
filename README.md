@@ -368,9 +368,9 @@ The honest list of what's still missing — workspace sandboxing,
 prompt-injection defence, two-container blast-radius split, persistent retry
 queue, tracing, multi-user RBAC, and a few smaller items — has its own file:
 **[docs/todolist/post-mvp-gaps.md](docs/todolist/post-mvp-gaps.md)** (2 High,
-6 Medium, 5 Low items at last count). Docker scaffolding (Phase 1,
-single-container) has shipped; the two-container split is tracked there as a
-follow-up.
+7 Medium, 5 Low items at last count). Docker scaffolding (Phase 1,
+single-container) has shipped; the two-container split and the Q3-aligned
+Coding Service Tool API are tracked there as follow-ups.
 
 ## Layout
 
@@ -387,7 +387,8 @@ agent_kanban/
 │   ├── design/
 │   │   ├── symphony-dashboard-spec.md
 │   │   ├── agent-invocation-and-adapters.md
-│   │   └── opencode-two-container-analysis.md   # Phase 2 cross-container options
+│   │   ├── opencode-two-container-analysis.md   # Phase 2 cross-container options
+│   │   └── coding-service-tool-api.md           # Q3-aligned tool API for upstream LLM agents
 │   └── todolist/
 │       ├── symphony-dashboard-todolist.md   # P0–W6 sprint plan
 │       └── post-mvp-gaps.md                 # production gaps & roadmap

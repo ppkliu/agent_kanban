@@ -318,8 +318,8 @@ orch.add_event_listener(my_listener)
 從 README 抽出來的「未完成項目」(workspace 沙箱、prompt injection 防護、
 雙容器爆炸半徑切分、持久化 retry queue、tracing、多人 RBAC 等) 都搬到一份獨立
 文件:**[docs/todolist/post-mvp-gaps.md](todolist/post-mvp-gaps.md)** (目前 2
-高 / 6 中 / 5 低)。Docker scaffolding (Phase 1,單容器) 已落地;雙容器切分
-留作後續工作,記錄在同一份檔案。
+高 / 7 中 / 5 低)。Docker scaffolding (Phase 1,單容器) 已落地;雙容器切分
+與 Q3 對齊的 Coding Service Tool API 都留作後續工作,記錄在同一份檔案。
 
 ## 檔案結構
 
@@ -336,7 +336,8 @@ agent_kanban/
 │   ├── design/
 │   │   ├── symphony-dashboard-spec.md
 │   │   ├── agent-invocation-and-adapters.md
-│   │   └── opencode-two-container-analysis.md   # Phase 2 跨容器方案分析
+│   │   ├── opencode-two-container-analysis.md   # Phase 2 跨容器方案分析
+│   │   └── coding-service-tool-api.md           # Q3 對齊:對外 LLM agent 的 tool API 設計
 │   └── todolist/
 │       ├── symphony-dashboard-todolist.md   # P0–W6 sprint plan
 │       └── post-mvp-gaps.md                 # production gaps & roadmap
