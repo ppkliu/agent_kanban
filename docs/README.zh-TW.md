@@ -2,7 +2,7 @@
 
 > [English README →](../README.md)
 
-> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**80 個單元測試全綠**(MVP 核心 29 + Dashboard 43 + OpenCode runner 8),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
+> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**91 個單元測試全綠**(MVP 核心 29 + Dashboard 43 + OpenCode runner 8 + Tool API 11),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
 
 ## 架構總覽
 
@@ -84,7 +84,7 @@
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 80 = MVP 29 + Dashboard 43 + OpenCode runner 8
+# 91 = MVP 29 + Dashboard 43 + OpenCode runner 8 + Tool API 11
 .venv/bin/python -m pytest
 
 # 純記憶體 demo,無外部依賴
@@ -130,6 +130,7 @@ cd frontend && npm run dev
 | 拖拉重排 Pending (priority override,不寫 tracker) | §3.3, §5.6 |
 | Pause / Resume / Abort / Force-retry 動作 | §5.4, §5.5 |
 | **緊急全部停止 (Emergency Stop All)** — TopBar 紅色按鈕,經一次確認後一鍵 abort 所有運行中的 agent | §5.4 (extension) |
+| **Coding Service Tool API** — `POST /api/v1/tools/*` (Phase A: list_repos / submit_coding_task / check_task_status / get_task_result / cancel_task),給上游 LLM agent 透過 function calling 呼叫 | [設計文件](design/coding-service-tool-api.md) |
 | Workflow editor (Monaco + last-known-good 熱載入) | §4.4, §5.8 |
 | WebSocket 即時事件 + FSM transition + config_changed / workflow_reloaded | §5.9 |
 | Bearer token 鑑權 (env `DASHBOARD_API_KEY` 或 `--api-key`) | §7 |
@@ -372,7 +373,7 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 80 tests
+├── tests/                     # 91 tests
 │   ├── conftest.py
 │   ├── test_workflow.py       # 7 tests
 │   ├── test_workspace.py      # 8 tests
@@ -381,7 +382,8 @@ agent_kanban/
 │   ├── test_dashboard_bridge.py        # 8 tests
 │   ├── test_dashboard_orchestrator.py  # 6 tests
 │   ├── test_dashboard_server.py        # 12 tests
-│   └── test_dashboard_extras.py        # 17 tests (13 + 4 emergency stop)
+│   ├── test_dashboard_extras.py        # 17 tests (13 + 4 emergency stop)
+│   └── test_tool_api.py                # 11 tests (Phase A coding service tool API)
 └── examples/
     ├── WORKFLOW.md            # 完整範例 (本機 kanban + opencode)
     └── demo_echo.py           # 端到端純記憶體 demo
@@ -391,7 +393,7 @@ agent_kanban/
 
 ```bash
 $ .venv/bin/python -m pytest
-======================== 80 passed in 4.55s =========================
+======================== 91 passed in 5.35s =========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (正常完成,3 個 workspace 都建立並寫入 marker 檔)

@@ -42,8 +42,13 @@
   - **Stage 1 (分析,已完成):** [`docs/design/coding-service-tool-api.md`](../design/coding-service-tool-api.md)
     把 Q3 (`Q3_OpenCode作為Tool的設計方案.md`) 對齊到 Symphony 既有 orchestrator + bridge,
     確認 ~90% infrastructure 已存在,只缺對外 RESTful 包裝層 + stage/result 兩個 helper module
-  - **Phase A (MVP endpoints, ~1 day):** 5 個端點上線 (跳過 inspect_repo / mode / idempotency)
-  - **Phase B (polish, ~1 day):** inspect_repo + 完整 stage 翻譯 + result derivation + mode 隔離
+  - **Phase A (已完成):** 5 個端點上線 (`list_repos` / `submit_coding_task` /
+    `check_task_status` / `get_task_result` / `cancel_task`),掛在
+    `/api/v1/tools/*`,新增 `symphony_mvp/dashboard/tool_api.py` + 11 個 pytest case
+    (TestClient + EchoRunner round-trip);Phase A 跳過 inspect_repo / per-task mode / idempotency
+  - **Phase B (polish, ~1 day):** inspect_repo + 完整 stage 翻譯
+    (`dashboard/stage.py`) + result derivation 補 files_changed/tests_run/blockers
+    (`dashboard/task_result.py`) + mode 隔離 per-task allowed_tools
   - **Phase C (per-need):** idempotency / multi-repo / quota / sandbox 三層防線
   - 跟 Docker Phase 2 完全正交,可平行做
 - [ ] **Docker scaffolding Phase 2:雙容器爆炸半徑切分** — 把 `opencode` CLI
