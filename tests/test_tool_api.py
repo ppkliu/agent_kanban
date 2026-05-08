@@ -232,9 +232,14 @@ def test_get_task_result_returns_done_summary_after_run(app_ctx) -> None:
     body = r.json()
     assert body["task_id"] == task_id
     assert body["status"] == "done"
-    assert "Task reached" in body["summary"]
+    # Phase B: summary now comes from the agent's own MESSAGE_DELTA stream
+    # (EchoRunner emits "Wrote <path>") rather than the Phase A template.
+    # Just assert it's a non-empty string here.
+    assert isinstance(body["summary"], str) and body["summary"]
     assert body["detailed_url"].endswith(f"/issues/{task_id}")
-    assert body["files_changed"] == []  # Phase A always empty
+    # Phase B: files_changed is derived from TOOL_CALL events. EchoRunner
+    # doesn't emit any tool calls, so it's still empty for this runner.
+    assert body["files_changed"] == []
     assert body["terminal_reason"] == "agent_finished"
 
 
@@ -309,3 +314,149 @@ def test_cancel_task_idempotent_on_unknown_or_finished(app_ctx) -> None:
     body = r.json()
     assert body["ok"] is True
     assert body["was_running"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Phase B — stage translation in check_task_status                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_check_status_uses_stage_translator_for_active_attempts(app_ctx) -> None:
+    """Inject a TOOL_CALL(edit) event and verify the API returns
+    stage='modifying_files' instead of the plain 'running' fallback."""
+    from datetime import datetime, timezone
+    from symphony_mvp.agent_runner import AgentEvent, AgentEventKind
+
+    orch = app_ctx["orch"]
+    bridge = app_ctx["bridge"]
+    submit = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "stage check", "repo": "memory"},
+    )
+    task_id = submit.json()["task_id"]
+    now = datetime.now(timezone.utc)
+    orch._attempts[task_id] = RunAttempt(  # noqa: SLF001
+        issue_id=task_id,
+        attempt_number=1,
+        state=RunState.RUNNING,
+        started_at=now,
+        last_event_at=now,
+    )
+    bridge.record_attempt_number(task_id, 1)
+    bridge.on_event(
+        task_id,
+        AgentEvent(
+            kind=AgentEventKind.TOOL_CALL,
+            timestamp=now,
+            data={"tool": "edit", "input": {"path": "src/x.py"}},
+        ),
+    )
+
+    r = app_ctx["client"].post(
+        "/api/v1/tools/check_task_status", json={"task_id": task_id}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["stage"] == "modifying_files"
+
+
+# --------------------------------------------------------------------------- #
+# Phase B — files_changed + tests_run derivation in get_task_result           #
+# --------------------------------------------------------------------------- #
+
+
+def test_get_task_result_files_changed_from_injected_events(app_ctx) -> None:
+    """Inject a finalised attempt + edit/write tool calls; verify the
+    Phase B result derivation surfaces them in files_changed."""
+    from datetime import datetime, timedelta, timezone
+    from symphony_mvp.agent_runner import AgentEvent, AgentEventKind
+
+    bridge = app_ctx["bridge"]
+    task_id = "tsk_phase_b"
+    now = datetime.now(timezone.utc)
+
+    bridge.record_attempt_number(task_id, 1)
+    bridge.on_event(
+        task_id,
+        AgentEvent(
+            kind=AgentEventKind.TOOL_CALL,
+            timestamp=now - timedelta(seconds=5),
+            data={"tool": "write", "tool_use_id": "w1", "input": {"path": "src/new.py"}},
+        ),
+    )
+    bridge.on_event(
+        task_id,
+        AgentEvent(
+            kind=AgentEventKind.TOOL_CALL,
+            timestamp=now - timedelta(seconds=4),
+            data={"tool": "edit", "tool_use_id": "e1", "input": {"path": "src/old.py"}},
+        ),
+    )
+    bridge.on_event(
+        task_id,
+        AgentEvent(
+            kind=AgentEventKind.MESSAGE_DELTA,
+            timestamp=now - timedelta(seconds=3),
+            data={"text": "Implemented the change. Consider adding more tests."},
+        ),
+    )
+
+    finished = RunAttempt(
+        issue_id=task_id,
+        attempt_number=1,
+        state=RunState.RELEASED,
+        started_at=now - timedelta(seconds=10),
+        ended_at=now,
+        terminal_reason=TerminalReason.AGENT_FINISHED,
+        turns_consumed=2,
+        cost_usd=0.0042,
+    )
+    bridge.record_finalised_attempt(finished)
+
+    r = app_ctx["client"].post(
+        "/api/v1/tools/get_task_result", json={"task_id": task_id}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "done"
+    paths = {f["path"]: f["change"] for f in body["files_changed"]}
+    assert paths == {"src/new.py": "added", "src/old.py": "modified"}
+    assert "Implemented the change" in body["summary"]
+    assert any("more tests" in s for s in body["follow_ups"])
+
+
+# --------------------------------------------------------------------------- #
+# Phase B — inspect_repo                                                      #
+# --------------------------------------------------------------------------- #
+
+
+def test_inspect_repo_returns_agents_md_and_tree(app_ctx, tmp_path) -> None:
+    """Drop an AGENTS.md + a couple source files into the workspace root
+    and verify inspect_repo surfaces them."""
+    workspace_root = tmp_path / "ws"
+    workspace_root.mkdir(exist_ok=True)
+    (workspace_root / "AGENTS.md").write_text(
+        "Use snake_case for python", encoding="utf-8"
+    )
+    src = workspace_root / "src"
+    src.mkdir()
+    (src / "main.py").write_text("print(1)", encoding="utf-8")
+
+    r = app_ctx["client"].post(
+        "/api/v1/tools/inspect_repo", json={"repo": "memory"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["repo"] == "memory"
+    assert body["agents_md"]["filename"] == "AGENTS.md"
+    assert "snake_case" in body["agents_md"]["content"]
+    assert "src/" in body["structure"]
+    assert "python" in body["languages"]
+
+
+def test_inspect_repo_rejects_unknown_repo_id(app_ctx) -> None:
+    r = app_ctx["client"].post(
+        "/api/v1/tools/inspect_repo", json={"repo": "github:not/configured"}
+    )
+    assert r.status_code == 400
+    assert "unknown repo" in r.json()["detail"]
