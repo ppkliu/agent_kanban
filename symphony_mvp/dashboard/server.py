@@ -744,6 +744,11 @@ def create_app(
 
     app.include_router(api_router)
 
+    # Coding Service Tool API — POST /api/v1/tools/* for upstream LLM agents.
+    # See docs/design/coding-service-tool-api.md.
+    from .tool_api import tool_router  # noqa: PLC0415 — keep import scoped to setup
+    app.include_router(tool_router)
+
     @app.websocket("/api/v1/events")
     async def events_ws(
         websocket: WebSocket,
