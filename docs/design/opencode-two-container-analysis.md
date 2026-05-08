@@ -3,6 +3,11 @@
 > 對應 [`docs/todolist/post-mvp-gaps.md`](../todolist/post-mvp-gaps.md) Medium 第 1 項。
 > Phase 1 (單容器) 已落地;這份文件是 Phase 2 (雙容器爆炸半徑切分) 動工前的設計分析,
 > 給使用者選方案用,不是實作 PR 的設計記錄。
+>
+> **See also**:本文聚焦 dashboard ↔ opencode **內部 transport**;若要看
+> Symphony 對外暴露的 RESTful Tool API (給上游 LLM agent 當 tool 來呼叫的
+> 6-tool 契約),見 [`coding-service-tool-api.md`](coding-service-tool-api.md)
+> — 兩件事完全正交,可獨立落地。
 
 ---
 
