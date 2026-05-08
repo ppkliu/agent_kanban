@@ -13,12 +13,16 @@ from __future__ import annotations
 
 import secrets
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..models import Issue, RunAttempt, RunState, TerminalReason
+from .repo_inspect import inspect_repo as fs_inspect_repo
+from .stage import Stage as TranslatedStage, derive_stage
+from .task_result import derive_result
 
 if TYPE_CHECKING:  # pragma: no cover
     from .server import DashboardAppState
@@ -49,7 +53,17 @@ tool_router = APIRouter(
 # --------------------------------------------------------------------------- #
 
 TaskStatus = Literal["pending", "running", "done", "failed", "cancelled"]
-TaskStage = Literal["queued", "running", "done", "failed", "cancelled"]
+TaskStage = Literal[
+    "queued",
+    "running",
+    "exploring_codebase",
+    "modifying_files",
+    "running_tests",
+    "summarising",
+    "done",
+    "failed",
+    "cancelled",
+]
 
 
 class RepoOut(BaseModel):
@@ -118,11 +132,18 @@ class FileChange(BaseModel):
     change: Literal["added", "modified", "deleted"]
 
 
+class TestRunOut(BaseModel):
+    passed: int
+    failed: int
+    framework: Optional[str] = None
+
+
 class TaskResultOut(BaseModel):
     task_id: str
     status: Literal["done", "failed", "cancelled"]
     summary: str
     files_changed: list[FileChange] = Field(default_factory=list)
+    tests_run: Optional[TestRunOut] = None
     blockers: list[str] = Field(default_factory=list)
     follow_ups: list[str] = Field(default_factory=list)
     detailed_url: str
@@ -140,6 +161,27 @@ class CancelTaskOut(BaseModel):
     ok: bool
     was_running: bool
     task_id: str
+
+
+class InspectRepoIn(BaseModel):
+    repo: str = Field(description="Repo id returned by list_repos")
+
+
+class AgentsDocOut(BaseModel):
+    filename: str
+    content: str
+
+
+class InspectRepoOut(BaseModel):
+    repo: str
+    agents_md: Optional[AgentsDocOut] = None
+    structure: str = ""
+    languages: list[str] = Field(default_factory=list)
+    file_count: int = 0
+    default_mode: Literal["build"] = "build"
+    allowed_modes: list[Literal["plan", "build", "review"]] = Field(
+        default_factory=lambda: ["plan", "build", "review"]
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -169,7 +211,9 @@ def _public_url(state: "DashboardAppState", task_id: str) -> str:
 
 
 def _derive_status(att: Optional[RunAttempt]) -> tuple[TaskStatus, TaskStage]:
-    """Map RunAttempt → (status, stage). Phase A keeps stage simple."""
+    """Map RunAttempt → (status, fallback_stage). The fallback stage is only
+    used when no event in the attempt's stream implies a finer-grained stage
+    (see stage.derive_stage)."""
     if att is None:
         return "pending", "queued"
     if att.state == RunState.UNCLAIMED:
@@ -271,6 +315,52 @@ def post_list_repos(request: Request) -> ListReposOut:
 
 
 @tool_router.post(
+    "/inspect_repo",
+    response_model=InspectRepoOut,
+    summary="Read AGENTS.md + tree summary + language breakdown for a repo",
+    description=(
+        "Cheap, read-only — no agent is spawned. Returns the repo's AGENTS.md "
+        "(or CONTRIBUTING.md / README.md fallback), a short tree summary, and "
+        "a language breakdown. **Call this before submit_coding_task for any "
+        "non-trivial work** so your task description matches the project's "
+        "conventions. Tree depth and entry count are capped to keep the "
+        "response token-light."
+    ),
+)
+def post_inspect_repo(body: InspectRepoIn, request: Request) -> InspectRepoOut:
+    state = _state(request)
+    cfg = state.orch.workflow.config
+
+    # Phase A only knows one repo. Validate the id matches.
+    if cfg.tracker_kind == "memory":
+        valid_id = "memory"
+    else:
+        valid_id = f"{cfg.tracker_kind}:{cfg.tracker_repo or 'unknown'}"
+    if body.repo != valid_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown repo {body.repo!r}; call list_repos for valid ids",
+        )
+
+    workspace_root = Path(cfg.workspace_root).expanduser()
+    inspection = fs_inspect_repo(workspace_root, repo_id=body.repo)
+
+    agents_out: AgentsDocOut | None = None
+    if inspection.agents_md is not None:
+        agents_out = AgentsDocOut(
+            filename=inspection.agents_md.filename,
+            content=inspection.agents_md.content,
+        )
+    return InspectRepoOut(
+        repo=inspection.repo,
+        agents_md=agents_out,
+        structure=inspection.structure,
+        languages=inspection.languages,
+        file_count=inspection.file_count,
+    )
+
+
+@tool_router.post(
     "/submit_coding_task",
     response_model=SubmitTaskOut,
     summary="Delegate a coding task and immediately return a task_id (fire-and-check)",
@@ -330,7 +420,15 @@ def post_check_task_status(
     state = _state(request)
     orch = state.orch
     att = orch._attempts.get(body.task_id)  # noqa: SLF001 — same pattern as existing routes
-    status, stage = _derive_status(att)
+    status, fallback_stage = _derive_status(att)
+    # For active attempts, sniff the most recent events to surface a finer
+    # stage label (Phase B). Terminal attempts keep their status-derived stage.
+    stage: TaskStage = fallback_stage
+    if status == "running" and att is not None:
+        events = state.bridge.fetch_events(
+            body.task_id, attempt_number=att.attempt_number, limit=200
+        )
+        stage = derive_stage(events, fallback_stage)  # type: ignore[arg-type]
     cfg = orch.workflow.config
     progress = _derive_progress(att, cfg.max_turns)
 
@@ -401,13 +499,31 @@ def post_get_task_result(
         except Exception:  # noqa: BLE001
             duration_ms = None
 
+    fallback_summary = _build_summary_phase_a(last)
+    events = state.bridge.fetch_events(
+        body.task_id, attempt_number=last.get("attempt_number"), limit=2000
+    )
+    derived = derive_result(last, events, fallback_summary=fallback_summary)
+    files_out = [
+        FileChange(path=fc.path, change=fc.change)  # type: ignore[arg-type]
+        for fc in derived.files_changed
+    ]
+    tests_out: TestRunOut | None = None
+    if derived.tests_run is not None:
+        tests_out = TestRunOut(
+            passed=derived.tests_run.passed,
+            failed=derived.tests_run.failed,
+            framework=derived.tests_run.framework,
+        )
+
     return TaskResultOut(
         task_id=body.task_id,
         status=outer_status,
-        summary=_build_summary_phase_a(last),
-        files_changed=[],  # Phase B
-        blockers=[],
-        follow_ups=[],
+        summary=derived.summary,
+        files_changed=files_out,
+        tests_run=tests_out,
+        blockers=derived.blockers,
+        follow_ups=derived.follow_ups,
         detailed_url=_public_url(state, body.task_id),
         cost_usd=float(last.get("cost_usd") or 0.0),
         duration_ms=duration_ms,
