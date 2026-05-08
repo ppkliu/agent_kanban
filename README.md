@@ -11,8 +11,8 @@
 > container for code generation). The default tracker is the project's own
 > SQLite-backed kanban — there is no required cloud or SaaS dependency. Local
 > LLMs are the primary runtime target; Claude Code CLI, Anthropic API, and
-> Codex are documented secondary backends. Pure Python 3.10+, **91 unit tests
-> green** (29 MVP core + 43 dashboard + 8 opencode runner + 11 tool API), spec-aligned React
+> Codex are documented secondary backends. Pure Python 3.10+, **125 unit tests
+> green** (29 MVP core + 43 dashboard + 8 opencode runner + 15 tool API + 11 stage + 10 task_result + 9 repo_inspect), spec-aligned React
 > observatory, all four pluggable runners selectable from a single line of
 > `WORKFLOW.md`.
 
@@ -98,7 +98,7 @@ For development / CI without Docker:
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 91 tests = 29 MVP core + 43 dashboard + 8 opencode runner + 11 tool API
+# 125 tests = 29 MVP core + 43 dashboard + 8 opencode runner + 15 tool API + 30 phase B helpers
 .venv/bin/python -m pytest
 
 # self-contained end-to-end demo (no external API)
@@ -152,7 +152,7 @@ cd frontend && npm run dev
 | Drag-to-reorder Pending — priority override, never writes the tracker | §3.3, §5.6 |
 | Pause / Resume / Abort / Force-retry actions | §5.4, §5.5 |
 | **Emergency Stop All** — TopBar kill switch, aborts every active worker in one confirmation | §5.4 (extension) |
-| **Coding Service Tool API** — `POST /api/v1/tools/*` (Phase A: list_repos / submit_coding_task / check_task_status / get_task_result / cancel_task) for upstream LLM agents | [design doc](docs/design/coding-service-tool-api.md) |
+| **Coding Service Tool API** — `POST /api/v1/tools/*` (list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task) for upstream LLM agents; Phase B surfaces stage translation + structured TaskResult | [design doc](docs/design/coding-service-tool-api.md) |
 | Workflow editor — Monaco + last-known-good hot reload | §4.4, §5.8 |
 | Live WebSocket events + FSM transitions + config_changed / workflow_reloaded | §5.9 |
 | Bearer-token auth (env `DASHBOARD_API_KEY` or `--api-key`) | §7 |
@@ -424,7 +424,7 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 91 tests
+├── tests/                     # 125 tests
 │   ├── conftest.py
 │   ├── test_workflow.py                # 7
 │   ├── test_workspace.py               # 8
@@ -434,7 +434,10 @@ agent_kanban/
 │   ├── test_dashboard_orchestrator.py  # 6
 │   ├── test_dashboard_server.py        # 12
 │   ├── test_dashboard_extras.py        # 17  (13 + 4 emergency stop)
-│   └── test_tool_api.py                # 11  (Phase A coding service tool API)
+│   ├── test_tool_api.py                # 15  (Phase A + Phase B coding service)
+│   ├── test_stage.py                   # 11  (Phase B stage translator)
+│   ├── test_task_result.py             # 10  (Phase B result derivation)
+│   └── test_repo_inspect.py            # 9   (Phase B inspect_repo helpers)
 └── examples/
     ├── WORKFLOW.md            # full example (local kanban + opencode)
     └── demo_echo.py           # in-memory end-to-end demo
@@ -443,7 +446,7 @@ agent_kanban/
 ## Run log
 ```bash
 $ .venv/bin/python -m pytest
-======================== 91 passed in 5.35s =========================
+======================== 125 passed in 5.6s =========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (3 workspaces created, marker files written)

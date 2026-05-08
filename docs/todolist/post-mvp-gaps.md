@@ -46,9 +46,14 @@
     `check_task_status` / `get_task_result` / `cancel_task`),掛在
     `/api/v1/tools/*`,新增 `symphony_mvp/dashboard/tool_api.py` + 11 個 pytest case
     (TestClient + EchoRunner round-trip);Phase A 跳過 inspect_repo / per-task mode / idempotency
-  - **Phase B (polish, ~1 day):** inspect_repo + 完整 stage 翻譯
-    (`dashboard/stage.py`) + result derivation 補 files_changed/tests_run/blockers
-    (`dashboard/task_result.py`) + mode 隔離 per-task allowed_tools
+  - **Phase B (polish, 部分完成):** ✅ inspect_repo (新增 `/api/v1/tools/inspect_repo`
+    + `dashboard/repo_inspect.py`),✅ 完整 stage 翻譯 (`dashboard/stage.py`,
+    `check_task_status` 自動 surface `exploring_codebase` / `modifying_files` /
+    `running_tests` / `summarising` 等細粒度 stage),✅ result derivation 補
+    files_changed / tests_run / blockers / follow_ups (`dashboard/task_result.py`,
+    `get_task_result` 從 event stream 萃取結構化 outcome)。
+    **未完成:** mode 隔離 per-task allowed_tools — 需要 orchestrator/runner 端
+    的 runtime override plumbing,留待下一個 plan
   - **Phase C (per-need):** idempotency / multi-repo / quota / sandbox 三層防線
   - 跟 Docker Phase 2 完全正交,可平行做
 - [ ] **Docker scaffolding Phase 2:雙容器爆炸半徑切分** — 把 `opencode` CLI
