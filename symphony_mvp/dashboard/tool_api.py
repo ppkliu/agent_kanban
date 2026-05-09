@@ -20,6 +20,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..models import Issue, RunAttempt, RunState, TerminalReason
+from .mode import (
+    DEFAULT_MODE,
+    MODE_LABEL_PREFIX,
+    Mode,
+    is_valid_mode,
+)
 from .repo_inspect import inspect_repo as fs_inspect_repo
 from .stage import Stage as TranslatedStage, derive_stage
 from .task_result import derive_result
@@ -99,6 +105,14 @@ class SubmitTaskIn(BaseModel):
     files_hint: list[str] | None = Field(
         default=None,
         description="Optional file paths to focus on. Helps the agent skip exploration.",
+    )
+    mode: Optional[Literal["plan", "build", "review"]] = Field(
+        default=None,
+        description=(
+            "Hard tool whitelist for this task. plan = read+grep+bash (no edit); "
+            "build = full toolset (default); review = read+grep only. Enforced "
+            "via runner allowed_tools, not just prompt suggestion."
+        ),
     )
 
 
@@ -261,11 +275,19 @@ def _build_summary_phase_a(history_row: dict[str, Any]) -> str:
 
 
 def _make_task_issue(body: SubmitTaskIn) -> Issue:
-    """Generate an Issue ingestible by InMemoryTracker.add()."""
+    """Generate an Issue ingestible by InMemoryTracker.add().
+
+    Encodes the requested ``mode`` (if any) as a ``mode:<value>`` label so
+    the orchestrator can read it off ``issue.labels`` at dispatch time and
+    pass the matching ``allowed_tools`` whitelist to ``runner.run()``.
+    """
     task_id = f"tsk_{secrets.token_hex(8)}"
     description = body.task
     if body.files_hint:
         description = f"{body.task}\n\nFocus on: {', '.join(body.files_hint)}"
+    labels = ["tool-api"]
+    if body.mode is not None:
+        labels.append(f"{MODE_LABEL_PREFIX}{body.mode}")
     now = datetime.now(timezone.utc)
     return Issue(
         id=task_id,
@@ -276,7 +298,7 @@ def _make_task_issue(body: SubmitTaskIn) -> Issue:
         state="open",
         branch_name=None,
         url=f"opencode-tool-api://{task_id}",
-        labels=["tool-api"],
+        labels=labels,
         blocked_by=[],
         created_at=now,
         updated_at=now,
