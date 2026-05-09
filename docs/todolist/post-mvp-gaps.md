@@ -9,7 +9,7 @@
 | Severity | 數量 |
 |----------|------|
 | **High** | 2 |
-| Medium   | 7 |
+| Medium   | 6 |
 | Low      | 5 |
 
 ---
@@ -72,10 +72,16 @@
 - [ ] **CI smoke test** — `docker compose up -d` 在 GH Actions / 自架 runner 跑
   - 確認 `/healthz` 200、SPA 載入、`docker compose down -v` 乾淨
   - 跟現有的 pytest / vitest job 並行
-- [ ] **持久化 retry queue** — 重啟丟失內存 attempt
-  - 解法:把 `_attempts` 落到 SQLite WAL (Dashboard SQLite 已 WAL,複用即可)
-  - 需要決定:是保留現有的 in-memory 為主、SQLite 為災難復原 backup,
-    還是直接讓 SQLite 為單一真相
+- [x] **持久化 retry queue** — 重啟後 in-flight attempts 自動 hydrate
+  - 已落地:新增 `attempts_state` SQLite 表 +
+    `bridge.persist_attempt` / `load_active_attempts` / `delete_attempt_state`,
+    Orchestrator `__init__` 從 bridge hydrate `_attempts`,dispatch / release
+    自動 persist / delete
+  - 設計選擇:in-memory 為主、SQLite 為災難復原 backup;released 的 row 從
+    `attempts_state` 刪掉,只在 `attempt_history` 留 finalised snapshot
+  - 測試覆蓋 4 個 case (round-trip / idempotent / delete / empty);完整
+    orchestrator restart-recovery 整合測試留作後續 (現有 dashboard tests
+    已驗證 persist 不破壞 hot path)
 - [ ] **Tracing / Metrics**
   - 目前只有 logs + Dashboard event log
   - 加 OpenTelemetry instrumentation,export 到 Tempo / Jaeger / Loki / Prometheus

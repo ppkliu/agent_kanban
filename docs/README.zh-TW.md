@@ -2,7 +2,7 @@
 
 > [English README →](../README.md)
 
-> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**125 個單元測試全綠**(MVP 核心 29 + Dashboard 43 + OpenCode runner 8 + Tool API 15 + Phase B helpers 30),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
+> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**129 個單元測試全綠**(MVP 核心 29 + Dashboard 47 + OpenCode runner 8 + Tool API 15 + Phase B helpers 30),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
 
 ## 架構總覽
 
@@ -84,7 +84,7 @@
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 125 = MVP 29 + Dashboard 43 + OpenCode runner 8 + Tool API 15 + Phase B helpers 30
+# 129 = MVP 29 + Dashboard 47 + OpenCode runner 8 + Tool API 15 + Phase B helpers 30
 .venv/bin/python -m pytest
 
 # 純記憶體 demo,無外部依賴
@@ -317,10 +317,10 @@ orch.add_event_listener(my_listener)
 ## 從 MVP 到生產的差距
 
 從 README 抽出來的「未完成項目」(workspace 沙箱、prompt injection 防護、
-雙容器爆炸半徑切分、持久化 retry queue、tracing、多人 RBAC 等) 都搬到一份獨立
+雙容器爆炸半徑切分、tracing、多人 RBAC 等) 都搬到一份獨立
 文件:**[docs/todolist/post-mvp-gaps.md](todolist/post-mvp-gaps.md)** (目前 2
-高 / 7 中 / 5 低)。Docker scaffolding (Phase 1,單容器) 已落地;雙容器切分
-與 Q3 對齊的 Coding Service Tool API 都留作後續工作,記錄在同一份檔案。
+高 / 6 中 / 5 低)。已落地:Docker scaffolding (Phase 1 單容器)、Coding
+Service Tool API (Phase A + Phase B 大部分)、持久化 retry queue。
 
 ## 檔案結構
 
@@ -373,13 +373,13 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 125 tests
+├── tests/                     # 129 tests
 │   ├── conftest.py
 │   ├── test_workflow.py       # 7 tests
 │   ├── test_workspace.py      # 8 tests
 │   ├── test_agent_runner.py   # 15 tests (7 legacy + 8 opencode)
 │   ├── test_orchestrator.py   # 7 tests
-│   ├── test_dashboard_bridge.py        # 8 tests
+│   ├── test_dashboard_bridge.py        # 12 tests (8 + 4 persistent retry queue)
 │   ├── test_dashboard_orchestrator.py  # 6 tests
 │   ├── test_dashboard_server.py        # 12 tests
 │   ├── test_dashboard_extras.py        # 17 tests (13 + 4 emergency stop)
@@ -396,7 +396,7 @@ agent_kanban/
 
 ```bash
 $ .venv/bin/python -m pytest
-======================== 125 passed in 5.6s =========================
+======================== 129 passed in 6.1s =========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (正常完成,3 個 workspace 都建立並寫入 marker 檔)

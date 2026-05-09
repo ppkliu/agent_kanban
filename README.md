@@ -11,8 +11,8 @@
 > container for code generation). The default tracker is the project's own
 > SQLite-backed kanban — there is no required cloud or SaaS dependency. Local
 > LLMs are the primary runtime target; Claude Code CLI, Anthropic API, and
-> Codex are documented secondary backends. Pure Python 3.10+, **125 unit tests
-> green** (29 MVP core + 43 dashboard + 8 opencode runner + 15 tool API + 11 stage + 10 task_result + 9 repo_inspect), spec-aligned React
+> Codex are documented secondary backends. Pure Python 3.10+, **129 unit tests
+> green** (29 MVP core + 47 dashboard + 8 opencode runner + 15 tool API + 11 stage + 10 task_result + 9 repo_inspect), spec-aligned React
 > observatory, all four pluggable runners selectable from a single line of
 > `WORKFLOW.md`.
 
@@ -98,7 +98,7 @@ For development / CI without Docker:
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 125 tests = 29 MVP core + 43 dashboard + 8 opencode runner + 15 tool API + 30 phase B helpers
+# 129 tests = 29 MVP core + 47 dashboard + 8 opencode runner + 15 tool API + 30 phase B helpers
 .venv/bin/python -m pytest
 
 # self-contained end-to-end demo (no external API)
@@ -366,12 +366,12 @@ orch.add_event_listener(my_listener)
 ## Gap to production
 
 The honest list of what's still missing — workspace sandboxing,
-prompt-injection defence, two-container blast-radius split, persistent retry
-queue, tracing, multi-user RBAC, and a few smaller items — has its own file:
+prompt-injection defence, two-container blast-radius split, tracing,
+multi-user RBAC, and a few smaller items — has its own file:
 **[docs/todolist/post-mvp-gaps.md](docs/todolist/post-mvp-gaps.md)** (2 High,
-7 Medium, 5 Low items at last count). Docker scaffolding (Phase 1,
-single-container) has shipped; the two-container split and the Q3-aligned
-Coding Service Tool API are tracked there as follow-ups.
+6 Medium, 5 Low items at last count). Shipped so far: Docker scaffolding
+(Phase 1, single-container), Coding Service Tool API (Phase A + B mostly),
+and persistent retry queue.
 
 ## Layout
 
@@ -424,13 +424,13 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 125 tests
+├── tests/                     # 129 tests
 │   ├── conftest.py
 │   ├── test_workflow.py                # 7
 │   ├── test_workspace.py               # 8
 │   ├── test_agent_runner.py            # 15  (7 legacy + 8 opencode)
 │   ├── test_orchestrator.py            # 7
-│   ├── test_dashboard_bridge.py        # 8
+│   ├── test_dashboard_bridge.py        # 12  (8 + 4 persistent retry queue)
 │   ├── test_dashboard_orchestrator.py  # 6
 │   ├── test_dashboard_server.py        # 12
 │   ├── test_dashboard_extras.py        # 17  (13 + 4 emergency stop)
@@ -446,7 +446,7 @@ agent_kanban/
 ## Run log
 ```bash
 $ .venv/bin/python -m pytest
-======================== 125 passed in 5.6s =========================
+======================== 129 passed in 6.1s =========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (3 workspaces created, marker files written)
