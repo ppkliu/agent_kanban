@@ -352,6 +352,89 @@ class DashboardBridge:
                 ),
             )
 
+    # ------------------------------------------------------------------ #
+    # Active attempt persistence (for orchestrator restart recovery)
+    # ------------------------------------------------------------------ #
+    def persist_attempt(self, attempt: Any) -> None:
+        """Snapshot one in-flight attempt to ``attempts_state``.
+
+        Idempotent on ``issue_id`` (PK). Released attempts SHOULD be deleted
+        via ``delete_attempt_state`` rather than left in this table; the
+        ``attempt_history`` table is the canonical home for finalised rows.
+
+        Duck-typed on ``RunAttempt`` like ``record_finalised_attempt``.
+        """
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT INTO attempts_state "
+                "(issue_id, attempt_number, state, started_at, last_event_at, "
+                "session_id, turns_consumed, cost_usd, error_message, "
+                "retry_after, paused_until, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(issue_id) DO UPDATE SET "
+                "attempt_number=excluded.attempt_number, "
+                "state=excluded.state, "
+                "started_at=excluded.started_at, "
+                "last_event_at=excluded.last_event_at, "
+                "session_id=excluded.session_id, "
+                "turns_consumed=excluded.turns_consumed, "
+                "cost_usd=excluded.cost_usd, "
+                "error_message=excluded.error_message, "
+                "retry_after=excluded.retry_after, "
+                "paused_until=excluded.paused_until, "
+                "updated_at=excluded.updated_at",
+                (
+                    attempt.issue_id,
+                    attempt.attempt_number,
+                    getattr(attempt.state, "value", str(attempt.state)),
+                    attempt.started_at.isoformat() if attempt.started_at else None,
+                    attempt.last_event_at.isoformat()
+                    if attempt.last_event_at else None,
+                    attempt.session_id,
+                    attempt.turns_consumed or 0,
+                    float(getattr(attempt, "cost_usd", 0.0) or 0.0),
+                    attempt.error_message,
+                    attempt.retry_after.isoformat() if attempt.retry_after else None,
+                    attempt.paused_until.isoformat()
+                    if attempt.paused_until else None,
+                    now_iso,
+                ),
+            )
+
+    def delete_attempt_state(self, issue_id: str) -> None:
+        """Remove an issue's row from ``attempts_state``. Called on _release."""
+        with self._lock, self._db:
+            self._db.execute(
+                "DELETE FROM attempts_state WHERE issue_id = ?", (issue_id,)
+            )
+
+    def load_active_attempts(self) -> list[dict[str, Any]]:
+        """Return all rows from ``attempts_state``. Orchestrator hydrates
+        ``self._attempts`` from this on init when a bridge is provided."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT issue_id, attempt_number, state, started_at, "
+                "last_event_at, session_id, turns_consumed, cost_usd, "
+                "error_message, retry_after, paused_until "
+                "FROM attempts_state"
+            ).fetchall()
+        cols = (
+            "issue_id",
+            "attempt_number",
+            "state",
+            "started_at",
+            "last_event_at",
+            "session_id",
+            "turns_consumed",
+            "cost_usd",
+            "error_message",
+            "retry_after",
+            "paused_until",
+        )
+        return [dict(zip(cols, r)) for r in rows]
+
     def list_attempt_history(self, issue_id: str) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._db.execute(
