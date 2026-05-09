@@ -69,3 +69,22 @@ CREATE TABLE IF NOT EXISTS attempt_history (
 
 CREATE INDEX IF NOT EXISTS idx_attempt_history_issue
     ON attempt_history (issue_id, attempt_number);
+
+-- In-flight attempt snapshot — one row per non-released attempt.
+-- Lets the orchestrator hydrate _attempts on restart so retry queue + session
+-- continuity survive a process bounce. Released attempts are deleted from this
+-- table (their history lives in attempt_history above).
+CREATE TABLE IF NOT EXISTS attempts_state (
+    issue_id        TEXT    PRIMARY KEY,
+    attempt_number  INTEGER NOT NULL,
+    state           TEXT    NOT NULL,
+    started_at      TEXT,
+    last_event_at   TEXT,
+    session_id      TEXT,
+    turns_consumed  INTEGER NOT NULL DEFAULT 0,
+    cost_usd        REAL    NOT NULL DEFAULT 0,
+    error_message   TEXT,
+    retry_after     TEXT,
+    paused_until    TEXT,
+    updated_at      TEXT    NOT NULL
+);
