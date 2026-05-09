@@ -723,12 +723,33 @@ class _AgentWorker(threading.Thread):
                 self.orch._on_worker_done(self.issue.id, reason="before_run_failed")
                 return
 
+        # Per-task mode override: the Tool API stores the chosen mode as a
+        # "mode:plan" / "mode:build" / "mode:review" label on the issue. If
+        # present, translate it into a runner allowed_tools whitelist for
+        # this attempt only; otherwise pass None (= use the runner's
+        # configured default — preserves legacy behaviour).
+        mode_allowed_tools: list[str] | None = None
+        try:
+            from .dashboard.mode import (  # noqa: PLC0415
+                allowed_tools_for, extract_mode_from_labels,
+            )
+            mode = extract_mode_from_labels(self.issue.labels)
+            if mode is not None:
+                mode_allowed_tools = allowed_tools_for(mode)
+                logger.info(
+                    "Issue %s mode=%s allowed_tools=%s",
+                    self.issue.identifier, mode, mode_allowed_tools,
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception("mode label resolution raised; defaulting to runner config")
+
         try:
             for event in self.orch.runner.run(
                 prompt=prompt,
                 workspace_path=ws.path,
                 max_turns=cfg.max_turns,
                 session_id=self.attempt.session_id,
+                allowed_tools=mode_allowed_tools,
             ):
                 if self._stop.is_set():
                     logger.info("Worker for %s stopping early", self.issue.identifier)
