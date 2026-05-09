@@ -89,8 +89,10 @@ the dashboard plus a sandboxed `opencode` container that talks to a local
 LLM endpoint. Step-by-step instructions, configuration reference, and
 troubleshooting are in:
 
-- **[Docker quickstart guide (English)](docs/guide/docker-quickstart.md)**
-- **[Docker 快速啟動指南 (中文)](docs/guide/docker-quickstart.zh-TW.md)**
+- **[User manual (English) — install → configure → Tool API](docs/guide/user-manual.md)** ← read this if you want to integrate Symphony as a coding-service backend
+- **[使用說明書 (中文) — 安裝 / 配置 / Tool API](docs/guide/user-manual.zh-TW.md)**
+- [Docker quickstart guide (English, 5-minute path)](docs/guide/docker-quickstart.md)
+- [Docker 快速啟動指南 (中文)](docs/guide/docker-quickstart.zh-TW.md)
 
 For development / CI without Docker:
 
@@ -383,7 +385,9 @@ agent_kanban/
 ├── docs/
 │   ├── README.zh-TW.md        # 中文版 README
 │   ├── guide/
-│   │   ├── docker-quickstart.md       # English Docker user guide
+│   │   ├── user-manual.md             # English — full install→configure→Tool API
+│   │   ├── user-manual.zh-TW.md       # 中文使用說明書
+│   │   ├── docker-quickstart.md       # English Docker quick path
 │   │   └── docker-quickstart.zh-TW.md # 中文 Docker 快速啟動指南
 │   ├── design/
 │   │   ├── symphony-dashboard-spec.md
@@ -440,7 +444,9 @@ agent_kanban/
 │   └── test_repo_inspect.py            # 9   (Phase B inspect_repo helpers)
 └── examples/
     ├── WORKFLOW.md            # full example (local kanban + opencode)
-    └── demo_echo.py           # in-memory end-to-end demo
+    ├── WORKFLOW.docker.md     # docker-friendly memory + opencode default
+    ├── demo_echo.py           # in-memory end-to-end demo
+    └── tool_api_client.py     # Tool API round-trip (stdlib only)
 ```
 
 ## Run log
