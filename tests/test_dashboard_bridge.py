@@ -116,3 +116,82 @@ def test_fetch_events_filters_by_attempt(bridge: DashboardBridge) -> None:
     only_first = bridge.fetch_events("id-A", attempt_number=1)
     assert len(only_first) == 1
     assert only_first[0]["data"]["turn"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# Persistent retry queue (attempts_state)                                     #
+# --------------------------------------------------------------------------- #
+
+def test_persist_and_load_active_attempt_round_trip(bridge: DashboardBridge) -> None:
+    from datetime import timedelta
+    from symphony_mvp.models import RunAttempt, RunState
+
+    now = datetime(2026, 5, 8, 10, 0, 0, tzinfo=timezone.utc)
+    att = RunAttempt(
+        issue_id="id-MT-7",
+        attempt_number=2,
+        state=RunState.RUNNING,
+        started_at=now - timedelta(seconds=30),
+        last_event_at=now,
+        session_id="sess-abc",
+        turns_consumed=4,
+        cost_usd=0.01234,
+    )
+    bridge.persist_attempt(att)
+
+    rows = bridge.load_active_attempts()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["issue_id"] == "id-MT-7"
+    assert row["attempt_number"] == 2
+    assert row["state"] == "running"
+    assert row["session_id"] == "sess-abc"
+    assert row["turns_consumed"] == 4
+    assert abs(row["cost_usd"] - 0.01234) < 1e-6
+
+
+def test_persist_attempt_is_idempotent_on_issue_id(bridge: DashboardBridge) -> None:
+    """A second persist for the same issue should overwrite, not duplicate."""
+    from symphony_mvp.models import RunAttempt, RunState
+
+    now = datetime.now(timezone.utc)
+    att = RunAttempt(
+        issue_id="id-X",
+        attempt_number=1,
+        state=RunState.CLAIMED,
+        started_at=now,
+        last_event_at=now,
+    )
+    bridge.persist_attempt(att)
+
+    att.state = RunState.RUNNING
+    att.turns_consumed = 7
+    bridge.persist_attempt(att)
+
+    rows = bridge.load_active_attempts()
+    assert len(rows) == 1
+    assert rows[0]["state"] == "running"
+    assert rows[0]["turns_consumed"] == 7
+
+
+def test_delete_attempt_state_removes_row(bridge: DashboardBridge) -> None:
+    from symphony_mvp.models import RunAttempt, RunState
+
+    now = datetime.now(timezone.utc)
+    bridge.persist_attempt(
+        RunAttempt(
+            issue_id="id-K",
+            attempt_number=1,
+            state=RunState.RETRY_QUEUED,
+            started_at=now,
+            last_event_at=now,
+        )
+    )
+    assert len(bridge.load_active_attempts()) == 1
+
+    bridge.delete_attempt_state("id-K")
+    assert bridge.load_active_attempts() == []
+
+
+def test_load_active_attempts_returns_empty_for_fresh_db(bridge: DashboardBridge) -> None:
+    assert bridge.load_active_attempts() == []
