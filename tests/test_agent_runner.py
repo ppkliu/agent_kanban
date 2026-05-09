@@ -193,3 +193,39 @@ def test_opencode_build_argv_with_session() -> None:
     )
     assert "--session" in argv
     assert argv[argv.index("--session") + 1] == "abc-123"
+
+
+# --------------------------------------------------------------------------- #
+# Per-task allowed_tools override (Tool API mode → runner whitelist)          #
+# --------------------------------------------------------------------------- #
+
+def test_opencode_build_argv_uses_per_call_allowed_tools_override() -> None:
+    """Constructor default has [bash, read, edit, write]; per-call override
+    (e.g. mode='review') should win for that one call only."""
+    runner = OpenCodeRunner()
+    argv = runner._build_argv(  # noqa: SLF001
+        prompt="hi", max_turns=5, session_id=None,
+        allowed_tools=["read", "grep"],
+    )
+    flag_value = argv[argv.index("--allowed-tools") + 1]
+    assert flag_value == "read,grep"
+    # The runner's own state did not mutate
+    assert runner.allowed_tools == ["bash", "read", "edit", "write"]
+
+
+def test_opencode_build_argv_falls_back_to_default_when_override_is_none() -> None:
+    runner = OpenCodeRunner(allowed_tools=["bash", "read"])
+    argv = runner._build_argv(  # noqa: SLF001
+        prompt="hi", max_turns=5, session_id=None, allowed_tools=None,
+    )
+    assert argv[argv.index("--allowed-tools") + 1] == "bash,read"
+
+
+def test_claude_cli_build_argv_honors_override() -> None:
+    runner = ClaudeCLIRunner()
+    argv = runner._build_argv(  # noqa: SLF001
+        prompt="hi", max_turns=10, session_id=None,
+        allowed_tools=["Read", "Grep"],
+    )
+    flag_value = argv[argv.index("--allowedTools") + 1]
+    assert flag_value == "Read,Grep"

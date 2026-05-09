@@ -460,3 +460,51 @@ def test_inspect_repo_rejects_unknown_repo_id(app_ctx) -> None:
     )
     assert r.status_code == 400
     assert "unknown repo" in r.json()["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# Phase B — per-task mode (plan / build / review)                             #
+# --------------------------------------------------------------------------- #
+
+def test_submit_with_mode_writes_mode_label_on_issue(app_ctx) -> None:
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "audit", "repo": "memory", "mode": "review"},
+    )
+    assert r.status_code == 200
+    task_id = r.json()["task_id"]
+    issue = next(i for i in app_ctx["tracker"].all() if i.id == task_id)
+    assert "mode:review" in issue.labels
+    assert "tool-api" in issue.labels
+
+
+def test_submit_without_mode_does_not_add_mode_label(app_ctx) -> None:
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "no mode", "repo": "memory"},
+    )
+    task_id = r.json()["task_id"]
+    issue = next(i for i in app_ctx["tracker"].all() if i.id == task_id)
+    assert not any(label.startswith("mode:") for label in issue.labels)
+
+
+def test_submit_rejects_invalid_mode_value(app_ctx) -> None:
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory", "mode": "debug"},
+    )
+    # Pydantic validation kicks in: 422 unprocessable entity
+    assert r.status_code == 422
+
+
+def test_submit_with_each_valid_mode(app_ctx) -> None:
+    for mode in ("plan", "build", "review"):
+        r = app_ctx["client"].post(
+            "/api/v1/tools/submit_coding_task",
+            json={"task": "x", "repo": "memory", "mode": mode},
+        )
+        assert r.status_code == 200, f"mode={mode!r} failed: {r.text}"
+        issue = next(
+            i for i in app_ctx["tracker"].all() if i.id == r.json()["task_id"]
+        )
+        assert f"mode:{mode}" in issue.labels
