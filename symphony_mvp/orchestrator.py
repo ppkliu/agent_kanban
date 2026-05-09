@@ -91,6 +91,18 @@ class Orchestrator:
                                         # within an already-held lock context.
         self._on_event: list[Callable[[str, AgentEvent], None]] = []
 
+        # Persistent retry queue — opt-in via bridge.
+        # If the bridge exposes load_active_attempts(), rehydrate _attempts
+        # from SQLite so a process restart doesn't lose in-flight scheduling
+        # state. Released attempts are not stored in the persistent table
+        # (their snapshot lives in attempt_history instead), so this loop
+        # only re-populates non-terminal attempts.
+        if bridge is not None and hasattr(bridge, "load_active_attempts"):
+            try:
+                self._hydrate_active_attempts()
+            except Exception:  # noqa: BLE001
+                logger.exception("bridge.load_active_attempts hydration failed")
+
     # ----- Public API -----
     def add_event_listener(self, fn: Callable[[str, AgentEvent], None]) -> None:
         """Subscribe to per-issue agent events. Called as fn(issue_id, event)."""
@@ -270,6 +282,7 @@ class Orchestrator:
                     session_id=existing.session_id if existing else None,
                 )
                 self._attempts[issue.id] = att
+                self._persist_attempt_state(att)
             if self.bridge is not None:
                 try:
                     self.bridge.record_attempt_number(issue.id, attempt_num)
@@ -417,11 +430,18 @@ class Orchestrator:
         new_state = att.state.value
 
         # Persist + broadcast state change so dashboards see the move.
+        # If the attempt is now RELEASED, drop its row from attempts_state —
+        # the canonical home for finalised attempts is attempt_history.
+        # RETRY_QUEUED stays in attempts_state so a restart picks it up.
         if self.bridge is not None:
             try:
                 self.bridge.record_finalised_attempt(att)
             except Exception:  # noqa: BLE001
                 logger.exception("bridge.record_finalised_attempt raised")
+            if att.state == RunState.RELEASED:
+                self._delete_attempt_state(att.issue_id)
+            else:
+                self._persist_attempt_state(att)
             if prev_state != new_state:
                 try:
                     self.bridge.notify_fsm_transition(
@@ -535,6 +555,75 @@ class Orchestrator:
                 session_id=session_id,
             )
         return True
+
+    # ----- Persistent retry queue helpers (opt-in via bridge) -----
+    def _persist_attempt_state(self, att: RunAttempt) -> None:
+        """Snapshot one in-flight attempt to the bridge so it survives a
+        restart. No-op when bridge has no persist surface."""
+        if self.bridge is None or not hasattr(self.bridge, "persist_attempt"):
+            return
+        try:
+            self.bridge.persist_attempt(att)
+        except Exception:  # noqa: BLE001
+            logger.exception("bridge.persist_attempt raised for %s", att.issue_id)
+
+    def _delete_attempt_state(self, issue_id: str) -> None:
+        if self.bridge is None or not hasattr(self.bridge, "delete_attempt_state"):
+            return
+        try:
+            self.bridge.delete_attempt_state(issue_id)
+        except Exception:  # noqa: BLE001
+            logger.exception("bridge.delete_attempt_state raised for %s", issue_id)
+
+    def _hydrate_active_attempts(self) -> None:
+        """Reconstruct ``self._attempts`` from ``bridge.load_active_attempts()``.
+
+        Only loads non-terminal rows (RELEASED attempts live in
+        ``attempt_history`` instead). Reconcile + retry / stall logic on the
+        next tick will treat hydrated attempts as if they had never paused —
+        e.g. a RUNNING row with stale ``last_event_at`` will trigger
+        ``STALL_TIMEOUT`` and flow through the existing retry queue.
+        """
+        from dateutil.parser import isoparse  # type: ignore[import-untyped]
+
+        rows = self.bridge.load_active_attempts()  # type: ignore[union-attr]
+        if not rows:
+            return
+        loaded = 0
+        for row in rows:
+            try:
+                state = RunState(row["state"])
+            except (KeyError, ValueError):
+                continue
+            if state == RunState.RELEASED:
+                # Defensive: should never appear here, but skip if it does.
+                continue
+
+            def _opt_dt(key: str) -> datetime | None:
+                v = row.get(key)
+                return isoparse(v) if v else None
+
+            att = RunAttempt(
+                issue_id=row["issue_id"],
+                attempt_number=int(row["attempt_number"]),
+                state=state,
+                started_at=_opt_dt("started_at"),
+                last_event_at=_opt_dt("last_event_at"),
+                session_id=row.get("session_id"),
+                turns_consumed=int(row.get("turns_consumed") or 0),
+                cost_usd=float(row.get("cost_usd") or 0.0),
+                error_message=row.get("error_message"),
+                retry_after=_opt_dt("retry_after"),
+                paused_until=_opt_dt("paused_until"),
+            )
+            self._attempts[att.issue_id] = att
+            # Restore attempt_count so the next dispatch increments past it.
+            self._attempt_count[att.issue_id] = max(
+                self._attempt_count[att.issue_id], att.attempt_number
+            )
+            loaded += 1
+        if loaded:
+            logger.info("Hydrated %d active attempt(s) from persistent state", loaded)
 
     # ----- Startup cleanup -----
     def _startup_cleanup(self) -> None:
