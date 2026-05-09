@@ -71,8 +71,15 @@ class AgentRunner(Protocol):
         workspace_path: str,
         max_turns: int,
         session_id: str | None = None,
+        allowed_tools: list[str] | None = None,
     ) -> Iterator[AgentEvent]:
-        """Run one agent session. Yield events until done or terminal failure."""
+        """Run one agent session. Yield events until done or terminal failure.
+
+        ``allowed_tools`` (optional) overrides the runner's configured tool
+        whitelist for *this call only*. Used by the Tool API per-task ``mode``
+        feature (plan / build / review). Runners that don't whitelist tools
+        natively (e.g. EchoRunner) accept-and-ignore the kwarg.
+        """
         ...
 
 
@@ -98,6 +105,7 @@ class EchoRunner:
         workspace_path: str,
         max_turns: int,
         session_id: str | None = None,
+        allowed_tools: list[str] | None = None,  # accepted-and-ignored
     ) -> Iterator[AgentEvent]:
         yield AgentEvent.now(AgentEventKind.TURN_STARTED, turn=1, session_id="echo-session")
         if self.delay_s:
@@ -148,8 +156,13 @@ class ClaudeCLIRunner:
         self.permission_mode = permission_mode
 
     def _build_argv(
-        self, prompt: str, max_turns: int, session_id: str | None
+        self,
+        prompt: str,
+        max_turns: int,
+        session_id: str | None,
+        allowed_tools: list[str] | None = None,
     ) -> list[str]:
+        tools = allowed_tools if allowed_tools is not None else self.allowed_tools
         argv = [
             self.command,
             "-p",
@@ -160,7 +173,7 @@ class ClaudeCLIRunner:
             "--max-turns",
             str(max_turns),
             "--allowedTools",
-            ",".join(self.allowed_tools),
+            ",".join(tools),
             "--permission-mode",
             self.permission_mode,
         ]
@@ -177,8 +190,9 @@ class ClaudeCLIRunner:
         workspace_path: str,
         max_turns: int,
         session_id: str | None = None,
+        allowed_tools: list[str] | None = None,
     ) -> Iterator[AgentEvent]:
-        argv = self._build_argv(prompt, max_turns, session_id)
+        argv = self._build_argv(prompt, max_turns, session_id, allowed_tools)
         logger.info("Spawning Claude CLI in %s: %s", workspace_path, shlex.join(argv))
 
         try:
@@ -298,8 +312,13 @@ class OpenCodeRunner:
         self.allowed_tools = allowed_tools or ["bash", "read", "edit", "write"]
 
     def _build_argv(
-        self, prompt: str, max_turns: int, session_id: str | None
+        self,
+        prompt: str,
+        max_turns: int,
+        session_id: str | None,
+        allowed_tools: list[str] | None = None,
     ) -> list[str]:
+        tools = allowed_tools if allowed_tools is not None else self.allowed_tools
         argv = [
             self.command,
             "run",
@@ -310,7 +329,7 @@ class OpenCodeRunner:
             "--max-turns",
             str(max_turns),
             "--allowed-tools",
-            ",".join(self.allowed_tools),
+            ",".join(tools),
         ]
         if self.model:
             argv += ["--model", self.model]
@@ -325,8 +344,9 @@ class OpenCodeRunner:
         workspace_path: str,
         max_turns: int,
         session_id: str | None = None,
+        allowed_tools: list[str] | None = None,
     ) -> Iterator[AgentEvent]:
-        argv = self._build_argv(prompt, max_turns, session_id)
+        argv = self._build_argv(prompt, max_turns, session_id, allowed_tools)
         logger.info("Spawning opencode in %s: %s", workspace_path, shlex.join(argv))
 
         try:
@@ -462,6 +482,8 @@ class AnthropicAPIRunner:
         workspace_path: str,
         max_turns: int,
         session_id: str | None = None,
+        allowed_tools: list[str] | None = None,  # accepted-and-ignored: this
+        # runner uses domain-specific tool schemas, not a CLI whitelist.
     ) -> Iterator[AgentEvent]:
         import requests
 
