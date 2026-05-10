@@ -85,7 +85,7 @@ one (default: Ollama on the host).
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# Sanity: 129 tests should pass
+# Sanity: 147 tests should pass
 .venv/bin/python -m pytest
 
 # Self-contained demo (no Tool API, no LLM)
@@ -262,10 +262,26 @@ curl -X POST http://localhost:17957/api/v1/tools/submit_coding_task \
   -H "content-type: application/json" -d '{
     "task": "In src/auth/login.ts, the rate limiter resets per request instead of per IP. Fix the logic and add a regression test.",
     "repo": "memory",
-    "files_hint": ["src/auth/login.ts"]
+    "files_hint": ["src/auth/login.ts"],
+    "mode": "build"
   }'
 # → {"task_id": "tsk_abc123", "status": "pending"}
 ```
+
+**`mode` is a hard tool whitelist** (per Q3 §7.4.2) — not a prompt
+suggestion. The runner spawned for this attempt sees only the tools
+allowed for the chosen mode:
+
+| `mode` | Runner `allowed_tools` | When to use |
+|---|---|---|
+| `plan` | `bash`, `read`, `grep` | exploration / write a plan / no edits |
+| `build` (default) | `bash`, `read`, `edit`, `write` | full implementation |
+| `review` | `read`, `grep` | pure read-only audit |
+
+Omit `mode` to use the runner's configured default (= `build`).
+Symphony enforces this by rebuilding the runner's argv per attempt with
+`--allowed-tools` set to the mode's whitelist; the agent literally
+cannot call a tool outside the list.
 
 **Writing good `task` text is the single biggest lever** for result quality:
 
@@ -456,6 +472,7 @@ a one-liner if you want to keep your tool registrations in sync.
 
 | Topic | Link |
 |---|---|
+| **MVP completion audit (30-second evaluator view)** | [`MVP-STATUS.md`](../MVP-STATUS.md) |
 | Repo overview + comparison to upstream | [`README.md`](../../README.md) |
 | Docker quickstart (5-minute path) | [`docker-quickstart.md`](docker-quickstart.md) |
 | Tool API design + Q3 alignment | [`docs/design/coding-service-tool-api.md`](../design/coding-service-tool-api.md) |
@@ -468,10 +485,11 @@ a one-liner if you want to keep your tool registrations in sync.
 
 ## 10. MVP definition (what's "complete enough")
 
-Treat the framework as **MVP-complete** if all of these are true:
+Treat the framework as **MVP-complete** if all of these are true (verified
+2026-05-09 at commit `515ad66`):
 
 - [x] `docker compose up -d` brings the dashboard up at `:17957`
-- [x] `pytest` is green locally (129 tests as of 2026-05)
+- [x] `pytest` is green locally (**147 tests** as of 2026-05-09)
 - [x] `python examples/tool_api_client.py` runs the full Tool API
       round-trip against a fresh stack
 - [x] `examples/WORKFLOW.docker.md` is a runnable default that an
@@ -479,6 +497,13 @@ Treat the framework as **MVP-complete** if all of these are true:
 - [x] Operator can hit Stop All in the browser to halt every running agent
 - [x] Persistent retry queue: a process restart re-hydrates in-flight
       attempts from `attempts_state` SQLite
+- [x] **Per-task `mode` (plan / build / review) enforces hard tool
+      whitelists at the runner level** — `submit_coding_task` writes a
+      `mode:*` label, orchestrator threads `allowed_tools` to
+      `runner.run()`, OpenCodeRunner / ClaudeCLIRunner rebuild argv
+      narrowed to the whitelist
 
+For a separate **30-second evaluator audit** (commit-hash-backed evidence
+per capability), see [`MVP-STATUS.md`](../MVP-STATUS.md).
 Beyond MVP — sandboxing, multi-repo, quota, OpenTelemetry, Phase C
 governance — are tracked in [`post-mvp-gaps.md`](../todolist/post-mvp-gaps.md).

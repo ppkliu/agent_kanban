@@ -80,7 +80,7 @@ endpoint,而且只有你明確指定它時才會。
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# Sanity:應該 129 tests 全綠
+# Sanity:應該 147 tests 全綠
 .venv/bin/python -m pytest
 
 # 純記憶體 demo (不走 Tool API、不需 LLM)
@@ -246,10 +246,25 @@ curl -X POST http://localhost:17957/api/v1/tools/submit_coding_task \
   -H "content-type: application/json" -d '{
     "task": "In src/auth/login.ts, the rate limiter resets per request instead of per IP. Fix the logic and add a regression test.",
     "repo": "memory",
-    "files_hint": ["src/auth/login.ts"]
+    "files_hint": ["src/auth/login.ts"],
+    "mode": "build"
   }'
 # → {"task_id": "tsk_abc123", "status": "pending"}
 ```
+
+**`mode` 是硬性的 tool whitelist** (對應 Q3 §7.4.2),不只是 prompt 提示。
+這次 attempt 起的 runner 只會看到該 mode 允許的工具:
+
+| `mode` | Runner `allowed_tools` | 何時用 |
+|---|---|---|
+| `plan` | `bash`, `read`, `grep` | 探索 / 寫計畫 / 不改檔 |
+| `build` (預設) | `bash`, `read`, `edit`, `write` | 完整實作 |
+| `review` | `read`, `grep` | 純唯讀 audit |
+
+不傳 `mode` 就用 runner 自己的預設 (= `build`)。
+Symphony 強制執行的方式是 — 每次 attempt 重建 runner argv,把
+`--allowed-tools` 設成該 mode 的 whitelist,agent 連呼叫白名單外的
+工具都辦不到。
 
 **寫好 `task` 文字是結果品質最大的槓桿**:
 
@@ -434,6 +449,7 @@ docstring — 想保持 tool 註冊跟服務同步,grep 一行就能拿出來。
 
 | 主題 | 連結 |
 |---|---|
+| **MVP 完成度 audit (30 秒評估視角)** | [`MVP-STATUS.zh-TW.md`](../MVP-STATUS.zh-TW.md) |
 | Repo 概觀 + 跟上游 symphony 比較 | [`docs/README.zh-TW.md`](../README.zh-TW.md) |
 | Docker quickstart (5 分鐘版) | [`docker-quickstart.zh-TW.md`](docker-quickstart.zh-TW.md) |
 | Tool API 設計 + Q3 對齊 | [`docs/design/coding-service-tool-api.md`](../design/coding-service-tool-api.md) |
@@ -446,10 +462,10 @@ docstring — 想保持 tool 註冊跟服務同步,grep 一行就能拿出來。
 
 ## 10. MVP 完成的判準
 
-當下面這些都成立,就算「MVP 完成」:
+當下面這些都成立,就算「MVP 完成」(2026-05-09 在 commit `515ad66` 驗過):
 
 - [x] `docker compose up -d` 把 dashboard 帶起來在 `:17957`
-- [x] `pytest` 在本機全綠 (2026-05 = 129 tests)
+- [x] `pytest` 在本機全綠 (**147 tests**,2026-05-09)
 - [x] `python examples/tool_api_client.py` 能在新拉起的 stack 上跑完整
       Tool API round-trip
 - [x] `examples/WORKFLOW.docker.md` 是可直接跑的預設,LLM 透過
@@ -457,6 +473,12 @@ docstring — 想保持 tool 註冊跟服務同步,grep 一行就能拿出來。
 - [x] Operator 可以在瀏覽器按 Stop All 一鍵停掉所有 running agent
 - [x] 持久化 retry queue:dashboard process 重啟後從 `attempts_state`
       SQLite 自動 hydrate in-flight attempts
+- [x] **per-task `mode` (plan / build / review) 在 runner 層強制 tool
+      whitelist** — `submit_coding_task` 寫 `mode:*` label,orchestrator
+      把 `allowed_tools` 透傳給 `runner.run()`,OpenCodeRunner /
+      ClaudeCLIRunner 重建 argv 把工具集縮到 whitelist
 
+要看獨立的**30 秒評估 audit** (每個能力都附 commit hash 證據),見
+[`MVP-STATUS.zh-TW.md`](../MVP-STATUS.zh-TW.md)。
 MVP 之外 — sandbox 隔離、multi-repo、quota、OpenTelemetry、Phase C
 governance — 都記在 [`post-mvp-gaps.md`](../todolist/post-mvp-gaps.md)。
