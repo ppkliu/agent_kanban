@@ -75,6 +75,7 @@
 支援的部署目標是 **Docker Compose** — 一個檔案同時帶起 Dashboard 與沙箱化的
 `opencode` 容器。完整步驟、配置參考、疑難排解都在:
 
+- **[MVP 完成度 (中文,30 秒 audit)](MVP-STATUS.zh-TW.md)** · **[MVP completion status (English)](MVP-STATUS.md)**
 - **[使用說明書 (中文) — 安裝 / 配置 / Tool API](guide/user-manual.zh-TW.md)** ← 想把 Symphony 接成 coding-service backend 看這份
 - **[User manual (English)](guide/user-manual.md)**
 - [Docker 快速啟動指南 (中文,5 分鐘版)](guide/docker-quickstart.zh-TW.md)
@@ -333,6 +334,8 @@ agent_kanban/
 ├── README.md                  # English (this file's parent)
 ├── docs/
 │   ├── README.zh-TW.md        # 你正在看
+│   ├── MVP-STATUS.md          # 30-second evaluator audit
+│   ├── MVP-STATUS.zh-TW.md    # 中文 MVP 完成度
 │   ├── guide/
 │   │   ├── user-manual.md             # English — install / configure / Tool API
 │   │   ├── user-manual.zh-TW.md       # 中文使用說明書

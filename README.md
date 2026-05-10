@@ -89,6 +89,7 @@ the dashboard plus a sandboxed `opencode` container that talks to a local
 LLM endpoint. Step-by-step instructions, configuration reference, and
 troubleshooting are in:
 
+- **[MVP completion status (English) — 30-second audit](docs/MVP-STATUS.md)** · **[MVP 完成度 (中文)](docs/MVP-STATUS.zh-TW.md)**
 - **[User manual (English) — install → configure → Tool API](docs/guide/user-manual.md)** ← read this if you want to integrate Symphony as a coding-service backend
 - **[使用說明書 (中文) — 安裝 / 配置 / Tool API](docs/guide/user-manual.zh-TW.md)**
 - [Docker quickstart guide (English, 5-minute path)](docs/guide/docker-quickstart.md)
@@ -384,6 +385,8 @@ agent_kanban/
 ├── README.md                  # English (this file)
 ├── docs/
 │   ├── README.zh-TW.md        # 中文版 README
+│   ├── MVP-STATUS.md          # 30-second evaluator audit
+│   ├── MVP-STATUS.zh-TW.md    # 中文 MVP 完成度
 │   ├── guide/
 │   │   ├── user-manual.md             # English — full install→configure→Tool API
 │   │   ├── user-manual.zh-TW.md       # 中文使用說明書
