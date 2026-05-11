@@ -190,17 +190,165 @@ Backup: `docker compose stop dashboard && cp data/dashboard.db backup.db`
 ### 4.2 Reverse-proxy / TLS
 
 Front the dashboard with Caddy / nginx / Traefik on the host and terminate
-TLS there. **Pass through `Connection: Upgrade` and `Upgrade: websocket`**
-or the live event feed will break.
+TLS there. Symphony's container listens on plain HTTP at `:17957` so the
+proxy stays in charge of certs, HSTS, and rate-limiting. The two
+must-haves:
+
+1. **Pass through `Connection: Upgrade` and `Upgrade: websocket`** — the
+   live event feed at `/api/v1/events` is a real WebSocket and will
+   disconnect every few seconds if these headers are stripped.
+2. **Forward the `Authorization: Bearer …` header verbatim** — Symphony's
+   bearer-token check looks at it directly. Most proxies do this by
+   default but a stripped or rewritten config is the #1 cause of
+   spurious 401s.
+
+#### Caddy (recommended — TLS is automatic)
 
 ```caddy
-# Caddyfile snippet
-example.com {
+# /etc/caddy/Caddyfile
+symphony.example.com {
+    encode gzip
+    # Long-running WebSocket needs a generous read timeout
     reverse_proxy localhost:17957 {
         header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        transport http {
+            read_timeout 1h
+        }
+    }
+
+    # Optional rate-limit (requires github.com/mholt/caddy-ratelimit plugin):
+    # rate_limit {
+    #     zone tool_api {
+    #         key {remote_host}
+    #         events 60
+    #         window 1m
+    #     }
+    # }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
     }
 }
 ```
+
+Caddy fetches and renews TLS certs automatically via Let's Encrypt — no
+extra config needed beyond pointing DNS at the host.
+
+#### nginx
+
+```nginx
+# /etc/nginx/sites-available/symphony
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name symphony.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/symphony.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/symphony.example.com/privkey.pem;
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    # Generous body / read timeouts for long-running agent tasks.
+    client_max_body_size 16M;
+    proxy_read_timeout   1h;
+    proxy_send_timeout   1h;
+
+    # Optional rate-limit on the Tool API specifically.
+    # Add to http{}:  limit_req_zone $binary_remote_addr zone=tools:10m rate=60r/m;
+    location /api/v1/tools/ {
+        # limit_req zone=tools burst=20 nodelay;
+        proxy_pass http://127.0.0.1:17957;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization     $http_authorization;
+    }
+
+    # WebSocket — events feed at /api/v1/events MUST preserve Upgrade.
+    location /api/v1/events {
+        proxy_pass http://127.0.0.1:17957;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $connection_upgrade;
+        proxy_set_header Host              $host;
+        proxy_read_timeout                 1d;
+    }
+
+    # Everything else (REST + SPA static assets).
+    location / {
+        proxy_pass http://127.0.0.1:17957;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization     $http_authorization;
+    }
+}
+
+server {
+    listen 80;
+    server_name symphony.example.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+#### Traefik (labels-on-the-compose-service style)
+
+If you want Traefik to discover the dashboard automatically, add labels to
+the `dashboard` service in `docker-compose.yml`:
+
+```yaml
+services:
+  dashboard:
+    # ...existing config...
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.symphony.rule: "Host(`symphony.example.com`)"
+      traefik.http.routers.symphony.entrypoints: "websecure"
+      traefik.http.routers.symphony.tls.certresolver: "letsencrypt"
+      # Symphony listens on 7957 INSIDE the container; Traefik talks to
+      # the container directly via the symphony network, so the host port
+      # mapping (17957) is irrelevant here.
+      traefik.http.services.symphony.loadbalancer.server.port: "7957"
+      # WebSocket headers are automatic in Traefik 2+; no extra config
+      # required for /api/v1/events.
+```
+
+#### Verifying the proxy
+
+```bash
+# 1. Plain healthz through the proxy
+curl -fsS https://symphony.example.com/healthz
+# expect: {"ok": true}
+
+# 2. Tool API round-trip (uses bearer + Tool API path)
+SYMPHONY_URL=https://symphony.example.com \
+DASHBOARD_API_KEY=… \
+  python examples/tool_api_client.py
+
+# 3. WebSocket (events feed must NOT 426 / disconnect immediately)
+curl -i -N \
+  -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" \
+  -H "Sec-WebSocket-Key: $(openssl rand -base64 16)" \
+  -H "Authorization: Bearer $DASHBOARD_API_KEY" \
+  https://symphony.example.com/api/v1/events
+# expect first response line: HTTP/1.1 101 Switching Protocols
+```
+
+If step 3 returns anything other than `101 Switching Protocols` the
+WebSocket upgrade is being stripped — re-check the `Connection` and
+`Upgrade` rewriting in your proxy.
 
 ### 4.3 Observability
 

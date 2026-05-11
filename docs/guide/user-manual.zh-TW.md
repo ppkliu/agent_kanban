@@ -179,17 +179,159 @@ Dashboard 對 tracker 是**唯讀的** — 從來不直接改 issue 狀態。狀
 
 ### 4.2 反向代理 / TLS
 
-在 host 上用 Caddy / nginx / Traefik 擋一層,在那邊終結 TLS。
-**務必透傳 `Connection: Upgrade` 跟 `Upgrade: websocket`** — 不然事件流會斷。
+在 host 上用 Caddy / nginx / Traefik 擋一層,在那邊終結 TLS。Symphony 容器
+監聽 `:17957` 純 HTTP,把憑證、HSTS、rate-limit 都交給 proxy 管。兩條鐵則:
+
+1. **透傳 `Connection: Upgrade` 跟 `Upgrade: websocket`** — `/api/v1/events`
+   是真的 WebSocket,header 被洗掉就會每幾秒斷一次線。
+2. **原樣轉發 `Authorization: Bearer …`** — Symphony 的 bearer 檢查直接讀
+   這個 header。大部分 proxy 預設會傳,但被改寫或拿掉就是 401 的第一大原因。
+
+#### Caddy (推薦 — TLS 自動申請)
 
 ```caddy
-# Caddyfile 片段
-example.com {
+# /etc/caddy/Caddyfile
+symphony.example.com {
+    encode gzip
+    # 長執行 WebSocket 需要寬鬆 read timeout
     reverse_proxy localhost:17957 {
         header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        transport http {
+            read_timeout 1h
+        }
+    }
+
+    # 選用 rate-limit (需要 github.com/mholt/caddy-ratelimit plugin):
+    # rate_limit {
+    #     zone tool_api {
+    #         key {remote_host}
+    #         events 60
+    #         window 1m
+    #     }
+    # }
+
+    # 安全 header
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
     }
 }
 ```
+
+Caddy 會自動透過 Let's Encrypt 申請與續發 TLS 憑證 — DNS 指過去就好,
+不需要額外配置。
+
+#### nginx
+
+```nginx
+# /etc/nginx/sites-available/symphony
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name symphony.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/symphony.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/symphony.example.com/privkey.pem;
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    # 長執行 agent 需要寬鬆 body / read timeout
+    client_max_body_size 16M;
+    proxy_read_timeout   1h;
+    proxy_send_timeout   1h;
+
+    # 選用 — 只對 Tool API 限速 (需要先在 http{} 加:
+    # limit_req_zone $binary_remote_addr zone=tools:10m rate=60r/m;)
+    location /api/v1/tools/ {
+        # limit_req zone=tools burst=20 nodelay;
+        proxy_pass http://127.0.0.1:17957;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization     $http_authorization;
+    }
+
+    # WebSocket — /api/v1/events 一定要保留 Upgrade
+    location /api/v1/events {
+        proxy_pass http://127.0.0.1:17957;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $connection_upgrade;
+        proxy_set_header Host              $host;
+        proxy_read_timeout                 1d;
+    }
+
+    # 其他 (REST + SPA 靜態資源)
+    location / {
+        proxy_pass http://127.0.0.1:17957;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization     $http_authorization;
+    }
+}
+
+server {
+    listen 80;
+    server_name symphony.example.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+#### Traefik (在 compose 服務上掛 label 自動探查)
+
+如果你用 Traefik 自動探查,在 `docker-compose.yml` 的 `dashboard` 服務
+加 label:
+
+```yaml
+services:
+  dashboard:
+    # ...原有設定...
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.symphony.rule: "Host(`symphony.example.com`)"
+      traefik.http.routers.symphony.entrypoints: "websecure"
+      traefik.http.routers.symphony.tls.certresolver: "letsencrypt"
+      # Symphony 在容器內監聽 7957;Traefik 透過 docker 內網
+      # 直接連到容器,host port (17957) 在這裡無關
+      traefik.http.services.symphony.loadbalancer.server.port: "7957"
+      # WebSocket header 在 Traefik 2+ 自動處理,/api/v1/events
+      # 不需要額外設定
+```
+
+#### 驗證 proxy
+
+```bash
+# 1. 健康檢查走 proxy
+curl -fsS https://symphony.example.com/healthz
+# 預期:{"ok": true}
+
+# 2. Tool API round-trip (bearer + Tool API 路徑都會走過)
+SYMPHONY_URL=https://symphony.example.com \
+DASHBOARD_API_KEY=… \
+  python examples/tool_api_client.py
+
+# 3. WebSocket (events feed 不可以 426 或秒斷)
+curl -i -N \
+  -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" \
+  -H "Sec-WebSocket-Key: $(openssl rand -base64 16)" \
+  -H "Authorization: Bearer $DASHBOARD_API_KEY" \
+  https://symphony.example.com/api/v1/events
+# 第一行預期:HTTP/1.1 101 Switching Protocols
+```
+
+步驟 3 如果回的不是 `101 Switching Protocols`,就是 WebSocket Upgrade
+被 proxy 吃掉了 — 回頭檢查 `Connection` 跟 `Upgrade` header 的轉發設定。
 
 ### 4.3 Observability
 
