@@ -322,8 +322,9 @@ orch.add_event_listener(my_listener)
 從 README 抽出來的「未完成項目」(workspace 沙箱、prompt injection 防護、
 雙容器爆炸半徑切分、tracing、多人 RBAC 等) 都搬到一份獨立
 文件:**[docs/todolist/post-mvp-gaps.md](todolist/post-mvp-gaps.md)** (目前 2
-高 / 6 中 / 5 低)。已落地:Docker scaffolding (Phase 1 單容器)、Coding
-Service Tool API (Phase A + Phase B 大部分)、持久化 retry queue。
+高 / 5 中 / 5 低)。已落地:Docker scaffolding (Phase 1 單容器)、Coding
+Service Tool API (Phase A + Phase B 含 per-task mode 硬性 whitelist)、
+持久化 retry queue、雙語反向代理 / TLS 部署章節。
 
 ## 檔案結構
 
