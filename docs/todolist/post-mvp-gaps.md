@@ -9,7 +9,7 @@
 | Severity | 數量 |
 |----------|------|
 | **High** | 2 |
-| Medium   | 6 |
+| Medium   | 5 |
 | Low      | 5 |
 
 ---
@@ -87,9 +87,11 @@
 - [ ] **Permission policy 比 Codex 簡化**
   - Claude CLI 的 `--permission-mode` 涵蓋大部分;opencode 的 `allowed_tools` 補齊另一塊
   - 缺一個跨 runner 的 allow-list hook (寫到 `WorkflowConfig`?)
-- [ ] **W6.4 部署手冊延伸** — 反向代理章節 / TLS 章節
-  - User guide §5 已有 stub,但需要可複製的 Caddy / nginx config block
-  - 包含 WebSocket upgrade header 透傳 + 速率限制建議
+- [x] **W6.4 部署手冊延伸** — 反向代理章節 / TLS 章節
+  - 已落地:user manual §4.2 雙語版本展開,涵蓋 Caddy (推薦,自動 TLS) /
+    nginx (含 limit_req_zone rate-limit + WebSocket map) / Traefik (compose
+    label 自動探查) 三種完整 config block,加上 HSTS / X-Content-Type-Options
+    安全 header,以及 `curl -i -N` WebSocket Upgrade 自我驗證方法
 
 ## Low — 屬於更廣 backlog,當前不阻塞 DoD
 
