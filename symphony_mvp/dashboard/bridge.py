@@ -353,6 +353,62 @@ class DashboardBridge:
             )
 
     # ------------------------------------------------------------------ #
+    # Idempotency keys (Tool API Phase C — safe retry of submit_coding_task)
+    # ------------------------------------------------------------------ #
+    def lookup_idempotency_key(self, key: str) -> str | None:
+        """Return the previously-issued task_id for ``key`` if it exists and
+        has not expired. Returns ``None`` on miss or expiry.
+
+        Stale rows are not actively reaped here — they're cleared by
+        ``clear_expired_idempotency_keys`` on a periodic tick. The expiry
+        check inside this query keeps the read path correct even if the
+        cleaner is behind.
+        """
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT task_id FROM idempotency_keys "
+                "WHERE key = ? AND expires_at > ?",
+                (key, now_iso),
+            ).fetchone()
+        return row[0] if row else None
+
+    def record_idempotency_key(
+        self, key: str, task_id: str, *, ttl_hours: float = 1.0
+    ) -> None:
+        """Bind ``key`` → ``task_id`` for ``ttl_hours``. Idempotent on the
+        primary key — calling twice with the same key overwrites.
+
+        Default TTL of 1h matches Q3 §8.5's recommendation for handling
+        upstream LLM retry windows (network blips typically resolve in
+        seconds, but cross-region failover can take minutes)."""
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(hours=ttl_hours)
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT INTO idempotency_keys (key, task_id, created_at, expires_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET "
+                "task_id=excluded.task_id, "
+                "created_at=excluded.created_at, "
+                "expires_at=excluded.expires_at",
+                (key, task_id, now.isoformat(), expires.isoformat()),
+            )
+
+    def clear_expired_idempotency_keys(self) -> int:
+        """Reap rows whose ``expires_at`` is in the past. Returns the row
+        count deleted (useful for orchestrator-level metrics later)."""
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._db:
+            cursor = self._db.execute(
+                "DELETE FROM idempotency_keys WHERE expires_at <= ?", (now_iso,)
+            )
+            return cursor.rowcount
+
+    # ------------------------------------------------------------------ #
     # Active attempt persistence (for orchestrator restart recovery)
     # ------------------------------------------------------------------ #
     def persist_attempt(self, attempt: Any) -> None:
