@@ -322,14 +322,18 @@ orch.add_event_listener(my_listener)
 從 README 抽出來的「未完成項目」(workspace 沙箱、prompt injection 防護、
 雙容器爆炸半徑切分、tracing、多人 RBAC 等) 都搬到一份獨立
 文件:**[docs/todolist/post-mvp-gaps.md](todolist/post-mvp-gaps.md)** (目前 2
-高 / 5 中 / 5 低)。已落地:Docker scaffolding (Phase 1 單容器)、Coding
-Service Tool API (Phase A + Phase B 含 per-task mode 硬性 whitelist)、
-持久化 retry queue、雙語反向代理 / TLS 部署章節。
+高 / 3 中 / 5 低)。已落地:Docker scaffolding (Phase 1 單容器)、Coding
+Service Tool API (Phase A + Phase B 含 per-task mode 硬性 whitelist — 同時
+關閉跨 runner permission policy 缺口)、持久化 retry queue、雙語反向代理 /
+TLS 部署章節、GH Actions 三 job CI smoke test。
 
 ## 檔案結構
 
 ```
 agent_kanban/
+├── .github/
+│   └── workflows/
+│       └── ci.yml             # pytest + frontend + docker-smoke 三個 job
 ├── pyproject.toml
 ├── requirements.txt
 ├── README.md                  # English (this file's parent)

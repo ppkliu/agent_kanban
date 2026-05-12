@@ -372,15 +372,19 @@ The honest list of what's still missing — workspace sandboxing,
 prompt-injection defence, two-container blast-radius split, tracing,
 multi-user RBAC, and a few smaller items — has its own file:
 **[docs/todolist/post-mvp-gaps.md](docs/todolist/post-mvp-gaps.md)** (2 High,
-5 Medium, 5 Low items at last count). Shipped so far: Docker scaffolding
-(Phase 1, single-container), Coding Service Tool API (Phase A + B
-including per-task mode hard whitelist), persistent retry queue, and the
-bilingual reverse-proxy / TLS deployment chapter.
+3 Medium, 5 Low items at last count). Shipped so far: Docker scaffolding
+(Phase 1, single-container), Coding Service Tool API (Phase A + B including
+per-task mode hard whitelist — which also closes the cross-runner
+permission-policy gap), persistent retry queue, bilingual reverse-proxy /
+TLS deployment chapter, and a 3-job GH Actions CI smoke test.
 
 ## Layout
 
 ```
 agent_kanban/
+├── .github/
+│   └── workflows/
+│       └── ci.yml             # pytest + frontend + docker-smoke (3 jobs)
 ├── pyproject.toml
 ├── requirements.txt
 ├── README.md                  # English (this file)
