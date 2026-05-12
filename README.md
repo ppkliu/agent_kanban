@@ -11,8 +11,8 @@
 > container for code generation). The default tracker is the project's own
 > SQLite-backed kanban — there is no required cloud or SaaS dependency. Local
 > LLMs are the primary runtime target; Claude Code CLI, Anthropic API, and
-> Codex are documented secondary backends. Pure Python 3.10+, **156 unit tests
-> green** (29 MVP core + 52 dashboard + 11 runner + 23 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 1 ClaudeCLI override), spec-aligned React
+> Codex are documented secondary backends. Pure Python 3.10+, **164 unit tests
+> green** (29 MVP core + 52 dashboard + 11 runner + 23 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 8 metrics + 1 ClaudeCLI override), spec-aligned React
 > observatory, all four pluggable runners selectable from a single line of
 > `WORKFLOW.md`.
 
@@ -102,7 +102,7 @@ For development / CI without Docker:
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 156 tests = 29 MVP core + 52 dashboard + 11 runner + 23 tool API + 30 phase B helpers + 11 mode/override
+# 164 tests = 29 MVP core + 52 dashboard + 11 runner + 23 tool API + 30 phase B helpers + 11 mode/override + 8 metrics
 .venv/bin/python -m pytest
 
 # self-contained end-to-end demo (no external API)
@@ -377,7 +377,8 @@ multi-user RBAC, and a few smaller items — has its own file:
 (Phase 1, single-container), Coding Service Tool API (Phase A + B including
 per-task mode hard whitelist + Phase C idempotency), persistent retry queue,
 bilingual reverse-proxy / TLS deployment chapter, 3-job GH Actions CI smoke
-test, and a curated bilingual `/api/v1/*` API reference.
+test, a curated bilingual `/api/v1/*` API reference, and Prometheus
+`/metrics` exposition (9 zero-dependency counters).
 
 ## Layout
 
@@ -439,7 +440,7 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 156 tests
+├── tests/                     # 164 tests
 │   ├── conftest.py
 │   ├── test_workflow.py                # 7
 │   ├── test_workspace.py               # 8
@@ -453,7 +454,8 @@ agent_kanban/
 │   ├── test_stage.py                   # 11  (Phase B stage translator)
 │   ├── test_task_result.py             # 10  (Phase B result derivation)
 │   ├── test_repo_inspect.py            # 9   (Phase B inspect_repo helpers)
-│   └── test_mode.py                    # 11  (Phase B mode whitelist)
+│   ├── test_mode.py                    # 11  (Phase B mode whitelist)
+│   └── test_metrics.py                 # 8   (Prometheus /metrics endpoint)
 └── examples/
     ├── WORKFLOW.md            # full example (local kanban + opencode)
     ├── WORKFLOW.docker.md     # docker-friendly memory + opencode default
@@ -464,7 +466,7 @@ agent_kanban/
 ## Run log
 ```bash
 $ .venv/bin/python -m pytest
-======================== 156 passed in 9.47s =========================
+======================== 164 passed in 9.32s =========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (3 workspaces created, marker files written)

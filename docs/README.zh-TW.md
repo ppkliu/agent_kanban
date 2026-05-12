@@ -2,7 +2,7 @@
 
 > [English README →](../README.md)
 
-> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**156 個單元測試全綠**(MVP 核心 29 + Dashboard 52 + Runner 11 + Tool API 23 + Phase B helpers 30 + mode 11),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
+> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**164 個單元測試全綠**(MVP 核心 29 + Dashboard 52 + Runner 11 + Tool API 23 + Phase B helpers 30 + mode 11 + metrics 8),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
 
 ## 架構總覽
 
@@ -88,7 +88,7 @@
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 156 = MVP 29 + Dashboard 52 + Runner 11 + Tool API 23 + Phase B helpers 30 + mode 11
+# 164 = MVP 29 + Dashboard 52 + Runner 11 + Tool API 23 + Phase B helpers 30 + mode 11 + metrics 8
 .venv/bin/python -m pytest
 
 # 純記憶體 demo,無外部依賴
@@ -326,7 +326,8 @@ orch.add_event_listener(my_listener)
 高 / 3 中 / 4 低)。已落地:Docker scaffolding (Phase 1 單容器)、Coding
 Service Tool API (Phase A + Phase B 含 per-task mode 硬性 whitelist +
 Phase C idempotency)、持久化 retry queue、雙語反向代理 / TLS 部署章節、
-GH Actions 三 job CI smoke test、中英雙語 `/api/v1/*` API reference。
+GH Actions 三 job CI smoke test、中英雙語 `/api/v1/*` API reference、
+Prometheus `/metrics` 暴露 (9 個零依賴 counter/gauge)。
 
 ## 檔案結構
 
@@ -388,7 +389,7 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 156 tests
+├── tests/                     # 164 tests
 │   ├── conftest.py
 │   ├── test_workflow.py       # 7 tests
 │   ├── test_workspace.py      # 8 tests
@@ -402,7 +403,8 @@ agent_kanban/
 │   ├── test_stage.py                   # 11 tests (Phase B stage translator)
 │   ├── test_task_result.py             # 10 tests (Phase B result derivation)
 │   ├── test_repo_inspect.py            # 9 tests  (Phase B inspect_repo helpers)
-│   └── test_mode.py                    # 11 tests (Phase B mode whitelist)
+│   ├── test_mode.py                    # 11 tests (Phase B mode whitelist)
+│   └── test_metrics.py                 # 8 tests  (Prometheus /metrics endpoint)
 └── examples/
     ├── WORKFLOW.md            # 完整範例 (本機 kanban + opencode)
     ├── WORKFLOW.docker.md     # Docker 友善版預設 (memory + opencode)
@@ -414,7 +416,7 @@ agent_kanban/
 
 ```bash
 $ .venv/bin/python -m pytest
-======================== 156 passed in 9.47s =========================
+======================== 164 passed in 9.32s =========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (正常完成,3 個 workspace 都建立並寫入 marker 檔)
