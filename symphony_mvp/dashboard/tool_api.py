@@ -114,6 +114,16 @@ class SubmitTaskIn(BaseModel):
             "via runner allowed_tools, not just prompt suggestion."
         ),
     )
+    idempotency_key: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description=(
+            "Optional client-supplied key for safe retry. Same key within "
+            "1 hour returns the original task_id without creating a duplicate. "
+            "Critical for upstream LLM retries on network blips."
+        ),
+    )
 
 
 class SubmitTaskOut(BaseModel):
@@ -415,6 +425,13 @@ def post_submit_coding_task(
             ),
         )
 
+    # Idempotency short-circuit: if the caller sent a key we've seen before
+    # within TTL, return the original task_id instead of creating a duplicate.
+    if body.idempotency_key and hasattr(state.bridge, "lookup_idempotency_key"):
+        prior = state.bridge.lookup_idempotency_key(body.idempotency_key)
+        if prior is not None:
+            return SubmitTaskOut(task_id=prior)
+
     issue = _make_task_issue(body)
     tracker = state.orch.tracker
     if not hasattr(tracker, "add"):  # pragma: no cover — defence in depth
@@ -423,6 +440,12 @@ def post_submit_coding_task(
             detail="tracker does not support runtime task ingestion",
         )
     tracker.add(issue)
+
+    # Persist the idempotency mapping AFTER the issue is in the tracker, so
+    # we never advertise a task_id whose underlying issue doesn't exist.
+    if body.idempotency_key and hasattr(state.bridge, "record_idempotency_key"):
+        state.bridge.record_idempotency_key(body.idempotency_key, issue.id)
+
     return SubmitTaskOut(task_id=issue.id)
 
 
