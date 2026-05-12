@@ -508,3 +508,74 @@ def test_submit_with_each_valid_mode(app_ctx) -> None:
             i for i in app_ctx["tracker"].all() if i.id == r.json()["task_id"]
         )
         assert f"mode:{mode}" in issue.labels
+
+
+# --------------------------------------------------------------------------- #
+# Phase C — idempotency_key (safe retry of submit_coding_task)                #
+# --------------------------------------------------------------------------- #
+
+def test_submit_with_same_idempotency_key_returns_same_task_id(app_ctx) -> None:
+    """Two submits with the same key should yield the same task_id and create
+    only one issue in the tracker."""
+    body = {
+        "task": "do thing",
+        "repo": "memory",
+        "idempotency_key": "client-retry-key-1",
+    }
+    r1 = app_ctx["client"].post("/api/v1/tools/submit_coding_task", json=body)
+    r2 = app_ctx["client"].post("/api/v1/tools/submit_coding_task", json=body)
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.json()["task_id"] == r2.json()["task_id"]
+    # Only one issue in the tracker (no duplicate)
+    matching = [i for i in app_ctx["tracker"].all() if i.id == r1.json()["task_id"]]
+    assert len(matching) == 1
+
+
+def test_submit_without_idempotency_key_always_creates_new_task(app_ctx) -> None:
+    body = {"task": "no key", "repo": "memory"}
+    r1 = app_ctx["client"].post("/api/v1/tools/submit_coding_task", json=body)
+    r2 = app_ctx["client"].post("/api/v1/tools/submit_coding_task", json=body)
+    assert r1.json()["task_id"] != r2.json()["task_id"]
+
+
+def test_submit_with_different_idempotency_keys_creates_separate_tasks(
+    app_ctx,
+) -> None:
+    r1 = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "a", "repo": "memory", "idempotency_key": "key-a"},
+    )
+    r2 = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "b", "repo": "memory", "idempotency_key": "key-b"},
+    )
+    assert r1.json()["task_id"] != r2.json()["task_id"]
+
+
+def test_idempotency_short_circuit_skips_label_mutation(app_ctx) -> None:
+    """If we resubmit with same key but different mode, the original task
+    is returned unchanged — we never mutate an existing issue."""
+    r1 = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "x", "repo": "memory",
+            "idempotency_key": "key-c", "mode": "build",
+        },
+    )
+    task_id = r1.json()["task_id"]
+    issue = next(i for i in app_ctx["tracker"].all() if i.id == task_id)
+    assert "mode:build" in issue.labels
+
+    # Re-submit with mode=review under same key — should NOT change anything
+    r2 = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "x", "repo": "memory",
+            "idempotency_key": "key-c", "mode": "review",
+        },
+    )
+    assert r2.json()["task_id"] == task_id
+    issue_after = next(i for i in app_ctx["tracker"].all() if i.id == task_id)
+    # Original mode:build label preserved; no mode:review added
+    assert "mode:build" in issue_after.labels
+    assert "mode:review" not in issue_after.labels

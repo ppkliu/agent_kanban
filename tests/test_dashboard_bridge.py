@@ -195,3 +195,42 @@ def test_delete_attempt_state_removes_row(bridge: DashboardBridge) -> None:
 
 def test_load_active_attempts_returns_empty_for_fresh_db(bridge: DashboardBridge) -> None:
     assert bridge.load_active_attempts() == []
+
+
+# --------------------------------------------------------------------------- #
+# Idempotency keys (Tool API Phase C — safe submit_coding_task retry)         #
+# --------------------------------------------------------------------------- #
+
+def test_lookup_idempotency_key_returns_none_when_missing(bridge: DashboardBridge) -> None:
+    assert bridge.lookup_idempotency_key("never-seen") is None
+
+
+def test_record_then_lookup_idempotency_round_trip(bridge: DashboardBridge) -> None:
+    bridge.record_idempotency_key("client-xyz", "tsk_abc123")
+    assert bridge.lookup_idempotency_key("client-xyz") == "tsk_abc123"
+
+
+def test_record_idempotency_key_overwrites_on_same_key(bridge: DashboardBridge) -> None:
+    bridge.record_idempotency_key("client-xyz", "tsk_old")
+    bridge.record_idempotency_key("client-xyz", "tsk_new")
+    assert bridge.lookup_idempotency_key("client-xyz") == "tsk_new"
+
+
+def test_lookup_returns_none_for_expired_key(bridge: DashboardBridge) -> None:
+    """An expired row should not be returned even if cleanup hasn't run."""
+    # Use a negative TTL to make expires_at land in the past.
+    bridge.record_idempotency_key("expired-key", "tsk_expired", ttl_hours=-1.0)
+    assert bridge.lookup_idempotency_key("expired-key") is None
+
+
+def test_clear_expired_idempotency_keys_reaps_only_expired(
+    bridge: DashboardBridge,
+) -> None:
+    bridge.record_idempotency_key("fresh", "tsk_fresh", ttl_hours=1.0)
+    bridge.record_idempotency_key("stale", "tsk_stale", ttl_hours=-1.0)
+    bridge.record_idempotency_key("also-stale", "tsk_also", ttl_hours=-2.0)
+
+    deleted = bridge.clear_expired_idempotency_keys()
+    assert deleted == 2
+    assert bridge.lookup_idempotency_key("fresh") == "tsk_fresh"
+    assert bridge.lookup_idempotency_key("stale") is None
