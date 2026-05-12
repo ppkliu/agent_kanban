@@ -70,6 +70,21 @@ CREATE TABLE IF NOT EXISTS attempt_history (
 CREATE INDEX IF NOT EXISTS idx_attempt_history_issue
     ON attempt_history (issue_id, attempt_number);
 
+-- Idempotency keys for Tool API submit_coding_task (Phase C).
+-- Lets upstream LLM agents safely retry submits on network blips —
+-- the same key within TTL returns the original task_id rather than
+-- creating a duplicate task. Expired rows are reaped opportunistically
+-- by the orchestrator's existing tick-level cleanup paths.
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    key         TEXT    PRIMARY KEY,
+    task_id     TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL,
+    expires_at  TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_idempotency_expires
+    ON idempotency_keys (expires_at);
+
 -- In-flight attempt snapshot — one row per non-released attempt.
 -- Lets the orchestrator hydrate _attempts on restart so retry queue + session
 -- continuity survive a process bounce. Released attempts are deleted from this
