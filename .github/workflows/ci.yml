@@ -1,0 +1,117 @@
+# Symphony MVP — CI smoke test workflow.
+#
+# Three independent jobs so a green check confirms the whole MVP framework
+# works end-to-end on a clean checkout:
+#
+#   pytest         — 147 backend tests against ubuntu-latest + python 3.12
+#   frontend       — typecheck + vitest (45 tests) against node 20
+#   docker-smoke   — docker compose up -d ⇒ healthz ⇒ tool_api_client.py
+#                    ⇒ docker compose down -v
+#
+# All three must pass before a PR is mergeable. The docker-smoke job is the
+# critical one: it catches build-context drift, image dependency rot,
+# WORKFLOW.md schema regressions, and Tool API contract breakage that unit
+# tests can miss.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Cancel superseded runs on the same PR / branch to save runner minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dev + dashboard extras
+        run: pip install -e ".[dev,dashboard]"
+      - name: Run pytest
+        run: pytest -q
+
+  frontend:
+    name: frontend (Node 20)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install deps
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Vitest
+        run: npm test
+
+  docker-smoke:
+    name: docker compose end-to-end smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python (for the tool API client)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build dashboard image
+        run: docker compose build dashboard
+
+      - name: Prepare WORKFLOW.md (docker-friendly default)
+        run: cp examples/WORKFLOW.docker.md WORKFLOW.md
+
+      - name: Bring stack up
+        run: docker compose up -d
+
+      - name: Wait for /healthz to return 200
+        # Poll the container up to ~30s; fail loudly if the dashboard
+        # never becomes healthy (the most common cause is a missing
+        # OPENCODE_BASE_URL or a broken Dockerfile install step).
+        run: |
+          set -eu
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:17957/healthz > /dev/null; then
+              echo "/healthz returned 200 after ${attempt}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Dashboard never became healthy — collecting logs:"
+          docker compose logs dashboard
+          exit 1
+
+      - name: Exercise Tool API round-trip
+        env:
+          SYMPHONY_URL: http://localhost:17957
+        # examples/tool_api_client.py is stdlib-only; runs the full
+        # list_repos → inspect → submit → check → result → cancel chain.
+        run: python examples/tool_api_client.py
+
+      - name: Capture dashboard logs on failure
+        if: failure()
+        run: docker compose logs dashboard
+
+      - name: Tear down + remove volumes
+        if: always()
+        run: docker compose down -v
