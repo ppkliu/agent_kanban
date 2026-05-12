@@ -9,7 +9,7 @@
 | Severity | 數量 |
 |----------|------|
 | **High** | 2 |
-| Medium   | 5 |
+| Medium   | 3 |
 | Low      | 5 |
 
 ---
@@ -68,9 +68,13 @@
     `OpenCodeRunner` 改 httpx + SSE、compose 加第二個 service、新增整合測試
   - 對應原本 user guide 描述的雙容器拓撲;Phase 1 已先落單容器版本,
     Stage 2 完成後 user guide 會切回雙容器圖
-- [ ] **CI smoke test** — `docker compose up -d` 在 GH Actions / 自架 runner 跑
-  - 確認 `/healthz` 200、SPA 載入、`docker compose down -v` 乾淨
-  - 跟現有的 pytest / vitest job 並行
+- [x] **CI smoke test** — `.github/workflows/ci.yml` 已落地
+  - 三個並行 job:`pytest` (147 backend tests + Python 3.12) /
+    `frontend` (typecheck + 45 vitest 在 Node 20) /
+    `docker-smoke` (build image → `compose up -d` → 輪詢 `/healthz` →
+    跑 `examples/tool_api_client.py` 整套 Tool API round-trip → `compose down -v`)
+  - 失敗時自動 dump `docker compose logs dashboard` 給 diagnostics
+  - 觸發條件:push to main / PR to main / 手動 workflow_dispatch
 - [x] **持久化 retry queue** — 重啟後 in-flight attempts 自動 hydrate
   - 已落地:新增 `attempts_state` SQLite 表 +
     `bridge.persist_attempt` / `load_active_attempts` / `delete_attempt_state`,
@@ -84,9 +88,14 @@
 - [ ] **Tracing / Metrics**
   - 目前只有 logs + Dashboard event log
   - 加 OpenTelemetry instrumentation,export 到 Tempo / Jaeger / Loki / Prometheus
-- [ ] **Permission policy 比 Codex 簡化**
-  - Claude CLI 的 `--permission-mode` 涵蓋大部分;opencode 的 `allowed_tools` 補齊另一塊
-  - 缺一個跨 runner 的 allow-list hook (寫到 `WorkflowConfig`?)
+- [x] **Permission policy 比 Codex 簡化** — 跨 runner allow-list hook 已落地
+  - Phase B 的 per-task `mode` (`dashboard/mode.py` + AgentRunner Protocol
+    的 `allowed_tools` kwarg) 就是這條 gap 要的東西:Tool API 用
+    `mode: plan|build|review` 把硬性 whitelist 傳給 orchestrator,orchestrator
+    再透傳給 runner;OpenCodeRunner / ClaudeCLIRunner 重建 argv,
+    AnthropicAPIRunner / EchoRunner accept-and-ignore (沒有 CLI whitelist 介面)
+  - 進階作法 (per-tool allow vs deny / 細粒度 path-based permissions) 留作
+    後續 Phase C governance,不在當前 gap 範圍
 - [x] **W6.4 部署手冊延伸** — 反向代理章節 / TLS 章節
   - 已落地:user manual §4.2 雙語版本展開,涵蓋 Caddy (推薦,自動 TLS) /
     nginx (含 limit_req_zone rate-limit + WebSocket map) / Traefik (compose
