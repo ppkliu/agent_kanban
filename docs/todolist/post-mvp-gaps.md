@@ -10,7 +10,7 @@
 |----------|------|
 | **High** | 2 |
 | Medium   | 3 |
-| Low      | 5 |
+| Low      | 4 |
 
 ---
 
@@ -115,9 +115,11 @@
 - [ ] **Dashboard 多人 RBAC**
   - 目前只有單 token 全有 / 全無 (spec §7 已留升級空間)
   - 若團隊多人共用,需要 user / role / scoped token
-- [ ] **W6.4 API reference** — `/api/v1/*` 獨立文件
-  - 路由形狀已記在 spec §6 散文裡,但沒有抽出獨立檔案 (例如 OpenAPI YAML)
-  - FastAPI 已內建 `/openapi.json` 與 `/docs`,可以直接連
+- [x] **W6.4 API reference** — `/api/v1/*` 獨立文件
+  - 已落地:[docs/API-REFERENCE.md](../API-REFERENCE.md) + 中文鏡像,
+    按受眾分三層 (Coding Service Tool API / Dashboard Operator API / 基礎建設),
+    含 curl 範例與認證 recipe;同時直接連到 FastAPI 自動產生的 `/openapi.json`
+    與 `/docs` Swagger UI 當權威來源
 - [ ] **frontend i18n**
   - 目前 UI 文字硬寫英文。Hint composer / 動作按鈕等對中文 operator 不友善
   - 需要先決定 i18n 方案 (react-intl / lingui / 自家 hook)
