@@ -89,9 +89,13 @@
   - 測試覆蓋 4 個 case (round-trip / idempotent / delete / empty);完整
     orchestrator restart-recovery 整合測試留作後續 (現有 dashboard tests
     已驗證 persist 不破壞 hot path)
-- [ ] **Tracing / Metrics**
-  - 目前只有 logs + Dashboard event log
-  - 加 OpenTelemetry instrumentation,export 到 Tempo / Jaeger / Loki / Prometheus
+- [ ] **Tracing / Metrics** (部分完成)
+  - ✅ Prometheus `/metrics` 端點已落地 (`dashboard/metrics.py`,9 個 gauge/counter:
+    `symphony_attempts{state=}` / `symphony_attempts_finalised_total{terminal_reason=}` /
+    `symphony_events_total` / `symphony_events_by_kind_total{kind=}` / `symphony_hints_*` /
+    `symphony_priority_overrides` / `symphony_attempts_state_rows` / `symphony_idempotency_keys`),
+    純標準函式庫,沒新依賴;`/metrics` 故意不檢查 auth (Prometheus scrape convention)
+  - ⏳ OpenTelemetry tracing (span propagation / W3C TraceContext) 留作後續
 - [x] **Permission policy 比 Codex 簡化** — 跨 runner allow-list hook 已落地
   - Phase B 的 per-task `mode` (`dashboard/mode.py` + AgentRunner Protocol
     的 `allowed_tools` kwarg) 就是這條 gap 要的東西:Tool API 用

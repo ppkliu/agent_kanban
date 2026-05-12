@@ -335,9 +335,29 @@ curl -i -N \
 
 ### 4.3 Observability
 
-目前:結構化 log (uvicorn) + Dashboard event log (在 `dashboard.db` 裡)。
-OpenTelemetry instrumentation 是
-[`docs/todolist/post-mvp-gaps.md`](../todolist/post-mvp-gaps.md) 的 Medium gap。
+- **結構化 log** — uvicorn 寫 stdout,用既有 log pipeline 收集
+  (`docker compose logs dashboard`、journald、Loki 之類)。
+- **Dashboard event log** — 每個 agent event 都在 `dashboard.db` 的
+  `event_records` 表;React Replay tab 也是讀這張表。
+- **Prometheus `/metrics`** — `GET /metrics` (不檢查 auth、純文字) 暴露
+  9 個 gauge/counter:in-memory attempt 依 RunState 分群、依
+  terminal_reason 分群的 finalised 數量、事件總數與 kind 分布、hint
+  待消費量、priority override 數量、idempotency key 數量、持久化 retry
+  queue 列數。Prometheus + Grafana 建議 15 秒 scrape 間隔。
+
+```bash
+curl -fsS http://localhost:17957/metrics | head -20
+# # HELP symphony_attempts Current in-memory attempts grouped by Symphony RunState.
+# # TYPE symphony_attempts gauge
+# symphony_attempts{state="unclaimed"} 0
+# symphony_attempts{state="claimed"} 0
+# symphony_attempts{state="running"} 2
+# ...
+```
+
+OpenTelemetry tracing (跨 runner ↔ orchestrator ↔ 上游 LLM 的 span
+propagation) 仍在 roadmap,記錄在
+[`docs/todolist/post-mvp-gaps.md`](../todolist/post-mvp-gaps.md)。
 
 ### 4.4 緊急停止
 

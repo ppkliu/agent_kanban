@@ -352,8 +352,28 @@ WebSocket upgrade is being stripped — re-check the `Connection` and
 
 ### 4.3 Observability
 
-Today: structured logs (uvicorn) + Dashboard event log (in `dashboard.db`).
-OpenTelemetry instrumentation is tracked as a Medium gap in
+- **Structured logs** — uvicorn writes to stdout; capture via your normal log
+  pipeline (`docker compose logs dashboard`, journald, Loki, etc.).
+- **Dashboard event log** — every agent event is in `dashboard.db`'s
+  `event_records` table; the React Replay tab queries it.
+- **Prometheus `/metrics`** — `GET /metrics` (no auth, plain text) exposes
+  9 gauges/counters: in-memory attempt state by RunState, finalised
+  attempts by terminal_reason, total/by-kind event volume, hint backlog,
+  priority-override count, idempotency-key count, persistent retry-queue
+  rows. Wire to Prometheus + Grafana with a 15-second scrape interval.
+
+```bash
+curl -fsS http://localhost:17957/metrics | head -20
+# # HELP symphony_attempts Current in-memory attempts grouped by Symphony RunState.
+# # TYPE symphony_attempts gauge
+# symphony_attempts{state="unclaimed"} 0
+# symphony_attempts{state="claimed"} 0
+# symphony_attempts{state="running"} 2
+# ...
+```
+
+OpenTelemetry tracing (span propagation across runner ↔ orchestrator ↔
+upstream LLM) is still on the roadmap — tracked in
 [`docs/todolist/post-mvp-gaps.md`](../todolist/post-mvp-gaps.md).
 
 ### 4.4 Emergency stop
