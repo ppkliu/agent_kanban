@@ -1,7 +1,7 @@
 # Symphony MVP — Completion Status
 
 > 中文版: [MVP-STATUS.zh-TW.md](MVP-STATUS.zh-TW.md)
-> Audit date: **2026-05-09** · Commit: **`515ad66`** · Tests: **147 passing**
+> Audit date: **2026-05-11** · Tests: **156 passing** (rolling — re-stamp at each MVP-impacting commit)
 
 A 30-second audit answering "is Symphony's MVP framework complete?"
 For deeper docs see the [user manual](guide/user-manual.md); for the
@@ -32,11 +32,12 @@ via `WORKFLOW.md`**.
 | Coding Service Tool API — Phase B (stage / result / inspect_repo / mode) | ✅ | `2fc84d7..344fa20`, `997a4aa..515ad66` | `pytest tests/test_tool_api.py tests/test_stage.py tests/test_task_result.py tests/test_repo_inspect.py tests/test_mode.py` |
 | Per-task mode (plan / build / review) — hard tool whitelist at runner level | ✅ | `997a4aa..515ad66` | `pytest tests/test_mode.py tests/test_agent_runner.py::test_opencode_build_argv_uses_per_call_allowed_tools_override` |
 | Persistent retry queue — process restart re-hydrates in-flight attempts | ✅ | `2fda864..6986240` | `pytest tests/test_dashboard_bridge.py -k attempt` |
+| Phase C idempotency — safe retry of `submit_coding_task` via `idempotency_key` | ✅ | this batch | `pytest tests/test_dashboard_bridge.py -k idempotency` |
 | Emergency stop-all (operator kill switch) | ✅ | `1c2a45a` `2448f65` | TopBar red button in browser, or `POST /api/v1/emergency_stop` |
 | Four pluggable runners (echo / opencode / anthropic_api / claude_cli) | ✅ | `3b81799` `2ff85ba` | edit `WORKFLOW.md`'s `runner.kind` and restart |
 | Bilingual user manual + Tool API client demo | ✅ | `2fa23f1` `09dbd8c` `3754e0d` | open [user-manual.md](guide/user-manual.md) |
 | 5-column kanban + 6-tab issue drawer | ✅ | `2c9ef2f` and earlier | open `http://localhost:17957` |
-| Self-contained test suite (no LLM / no GitHub required) | ✅ | 147 tests | `.venv/bin/python -m pytest` |
+| Self-contained test suite (no LLM / no GitHub required) | ✅ | 156 tests | `.venv/bin/python -m pytest` |
 | Bearer-token auth on REST + WebSocket | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
 **Net result**: every behavioural promise in the README and user manual
@@ -69,7 +70,7 @@ Tracked in detail in [post-mvp-gaps.md](todolist/post-mvp-gaps.md).
 # 1. Clone + sanity-check the test suite (no LLM, no Docker required)
 git clone <this-repo> && cd agent_kanban
 uv venv && uv pip install -e ".[dev,dashboard]"
-.venv/bin/python -m pytest                  # expect: 147 passed
+.venv/bin/python -m pytest                  # expect: 156 passed
 
 # 2. Bring the framework up
 cp examples/WORKFLOW.docker.md WORKFLOW.md
@@ -93,9 +94,9 @@ a regression against the MVP completion line.
 
 | | |
 |---|---|
-| Audit date | **2026-05-09** |
-| Commit | `515ad66 docs: mark tool api phase b mode shipped and bump readme counts` |
-| Tests passing | **147** (`pytest -q`) |
+| Audit date | **2026-05-11** |
+| Commit | rolling — see `git log` for latest checkpoint |
+| Tests passing | **156** (`pytest -q`) |
 | Frontend tests | **45** (`npm test`) |
 | Docker image | `symphony-dashboard:dev` (single-container, Phase 1) |
 | Tool API endpoints live | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task` |
