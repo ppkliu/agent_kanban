@@ -46,7 +46,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -846,6 +846,14 @@ def create_app(
     @app.get("/healthz")
     def healthz() -> dict[str, Any]:
         return {"ok": True}
+
+    # Prometheus scrape endpoint. NO auth by convention — protect via
+    # reverse-proxy if the dashboard is internet-facing. Reads all data
+    # from in-memory orchestrator state + SQLite; zero hot-path overhead.
+    @app.get("/metrics", response_class=PlainTextResponse)
+    def metrics() -> str:
+        from .metrics import format_prometheus  # noqa: PLC0415 — scoped import
+        return format_prometheus(state.orch, state.bridge)
 
     # Mount frontend dist if it exists. We resolve relative to the package so
     # `python -m symphony_mvp.dashboard` from any cwd still serves the SPA.
