@@ -4,8 +4,8 @@
 > 審核日期:**2026-05-11** · 測試:**156 個全綠** (滾動式 — 每次影響 MVP 的 commit 後重貼)
 
 30 秒內回答「Symphony 的 MVP 框架做完了嗎?」想看深入文件就讀
-[使用說明書](guide/user-manual.zh-TW.md);要追進行中的 roadmap 看
-[post-mvp-gaps.md](todolist/post-mvp-gaps.md)。
+[使用說明書](guide/user-manual.zh-TW.md)、[`/api/v1/*` API reference](API-REFERENCE.zh-TW.md);
+要追進行中的 roadmap 看 [post-mvp-gaps.md](todolist/post-mvp-gaps.md)。
 
 ---
 

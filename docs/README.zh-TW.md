@@ -78,6 +78,7 @@
 - **[MVP 完成度 (中文,30 秒 audit)](MVP-STATUS.zh-TW.md)** · **[MVP completion status (English)](MVP-STATUS.md)**
 - **[使用說明書 (中文) — 安裝 / 配置 / Tool API](guide/user-manual.zh-TW.md)** ← 想把 Symphony 接成 coding-service backend 看這份
 - **[User manual (English)](guide/user-manual.md)**
+- [API reference (中文)](API-REFERENCE.zh-TW.md) · [API reference (English)](API-REFERENCE.md) — `/api/v1/*` 分層 index 含 curl 範例
 - [Docker 快速啟動指南 (中文,5 分鐘版)](guide/docker-quickstart.zh-TW.md)
 - [Docker quickstart guide (English)](guide/docker-quickstart.md)
 
@@ -322,10 +323,10 @@ orch.add_event_listener(my_listener)
 從 README 抽出來的「未完成項目」(workspace 沙箱、prompt injection 防護、
 雙容器爆炸半徑切分、tracing、多人 RBAC 等) 都搬到一份獨立
 文件:**[docs/todolist/post-mvp-gaps.md](todolist/post-mvp-gaps.md)** (目前 2
-高 / 3 中 / 5 低)。已落地:Docker scaffolding (Phase 1 單容器)、Coding
-Service Tool API (Phase A + Phase B 含 per-task mode 硬性 whitelist — 同時
-關閉跨 runner permission policy 缺口)、持久化 retry queue、雙語反向代理 /
-TLS 部署章節、GH Actions 三 job CI smoke test。
+高 / 3 中 / 4 低)。已落地:Docker scaffolding (Phase 1 單容器)、Coding
+Service Tool API (Phase A + Phase B 含 per-task mode 硬性 whitelist +
+Phase C idempotency)、持久化 retry queue、雙語反向代理 / TLS 部署章節、
+GH Actions 三 job CI smoke test、中英雙語 `/api/v1/*` API reference。
 
 ## 檔案結構
 
@@ -341,6 +342,8 @@ agent_kanban/
 │   ├── README.zh-TW.md        # 你正在看
 │   ├── MVP-STATUS.md          # 30-second evaluator audit
 │   ├── MVP-STATUS.zh-TW.md    # 中文 MVP 完成度
+│   ├── API-REFERENCE.md       # /api/v1/* curated index (English)
+│   ├── API-REFERENCE.zh-TW.md # 中文 API reference
 │   ├── guide/
 │   │   ├── user-manual.md             # English — install / configure / Tool API
 │   │   ├── user-manual.zh-TW.md       # 中文使用說明書

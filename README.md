@@ -92,6 +92,7 @@ troubleshooting are in:
 - **[MVP completion status (English) — 30-second audit](docs/MVP-STATUS.md)** · **[MVP 完成度 (中文)](docs/MVP-STATUS.zh-TW.md)**
 - **[User manual (English) — install → configure → Tool API](docs/guide/user-manual.md)** ← read this if you want to integrate Symphony as a coding-service backend
 - **[使用說明書 (中文) — 安裝 / 配置 / Tool API](docs/guide/user-manual.zh-TW.md)**
+- [API reference (English)](docs/API-REFERENCE.md) · [API reference (中文)](docs/API-REFERENCE.zh-TW.md) — curated `/api/v1/*` index with curl examples
 - [Docker quickstart guide (English, 5-minute path)](docs/guide/docker-quickstart.md)
 - [Docker 快速啟動指南 (中文)](docs/guide/docker-quickstart.zh-TW.md)
 
@@ -372,11 +373,11 @@ The honest list of what's still missing — workspace sandboxing,
 prompt-injection defence, two-container blast-radius split, tracing,
 multi-user RBAC, and a few smaller items — has its own file:
 **[docs/todolist/post-mvp-gaps.md](docs/todolist/post-mvp-gaps.md)** (2 High,
-3 Medium, 5 Low items at last count). Shipped so far: Docker scaffolding
+3 Medium, 4 Low items at last count). Shipped so far: Docker scaffolding
 (Phase 1, single-container), Coding Service Tool API (Phase A + B including
-per-task mode hard whitelist — which also closes the cross-runner
-permission-policy gap), persistent retry queue, bilingual reverse-proxy /
-TLS deployment chapter, and a 3-job GH Actions CI smoke test.
+per-task mode hard whitelist + Phase C idempotency), persistent retry queue,
+bilingual reverse-proxy / TLS deployment chapter, 3-job GH Actions CI smoke
+test, and a curated bilingual `/api/v1/*` API reference.
 
 ## Layout
 
@@ -392,6 +393,8 @@ agent_kanban/
 │   ├── README.zh-TW.md        # 中文版 README
 │   ├── MVP-STATUS.md          # 30-second evaluator audit
 │   ├── MVP-STATUS.zh-TW.md    # 中文 MVP 完成度
+│   ├── API-REFERENCE.md       # curated /api/v1/* index (English)
+│   ├── API-REFERENCE.zh-TW.md # 中文 API reference
 │   ├── guide/
 │   │   ├── user-manual.md             # English — full install→configure→Tool API
 │   │   ├── user-manual.zh-TW.md       # 中文使用說明書

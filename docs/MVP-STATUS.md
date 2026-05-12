@@ -4,8 +4,9 @@
 > Audit date: **2026-05-11** · Tests: **156 passing** (rolling — re-stamp at each MVP-impacting commit)
 
 A 30-second audit answering "is Symphony's MVP framework complete?"
-For deeper docs see the [user manual](guide/user-manual.md); for the
-running roadmap see [post-mvp-gaps.md](todolist/post-mvp-gaps.md).
+For deeper docs see the [user manual](guide/user-manual.md), the
+[`/api/v1/*` API reference](API-REFERENCE.md), or the running roadmap in
+[post-mvp-gaps.md](todolist/post-mvp-gaps.md).
 
 ---
 
