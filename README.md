@@ -11,8 +11,8 @@
 > container for code generation). The default tracker is the project's own
 > SQLite-backed kanban — there is no required cloud or SaaS dependency. Local
 > LLMs are the primary runtime target; Claude Code CLI, Anthropic API, and
-> Codex are documented secondary backends. Pure Python 3.10+, **147 unit tests
-> green** (29 MVP core + 47 dashboard + 11 runner + 19 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 1 ClaudeCLI override), spec-aligned React
+> Codex are documented secondary backends. Pure Python 3.10+, **156 unit tests
+> green** (29 MVP core + 52 dashboard + 11 runner + 23 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 1 ClaudeCLI override), spec-aligned React
 > observatory, all four pluggable runners selectable from a single line of
 > `WORKFLOW.md`.
 
@@ -101,7 +101,7 @@ For development / CI without Docker:
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 147 tests = 29 MVP core + 47 dashboard + 11 runner + 19 tool API + 30 phase B helpers + 11 mode/override
+# 156 tests = 29 MVP core + 52 dashboard + 11 runner + 23 tool API + 30 phase B helpers + 11 mode/override
 .venv/bin/python -m pytest
 
 # self-contained end-to-end demo (no external API)
@@ -436,17 +436,17 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 147 tests
+├── tests/                     # 156 tests
 │   ├── conftest.py
 │   ├── test_workflow.py                # 7
 │   ├── test_workspace.py               # 8
 │   ├── test_agent_runner.py            # 18  (15 + 3 allowed_tools override)
 │   ├── test_orchestrator.py            # 7
-│   ├── test_dashboard_bridge.py        # 12  (8 + 4 persistent retry queue)
+│   ├── test_dashboard_bridge.py        # 17  (12 + 5 idempotency keys)
 │   ├── test_dashboard_orchestrator.py  # 6
 │   ├── test_dashboard_server.py        # 12
 │   ├── test_dashboard_extras.py        # 17  (13 + 4 emergency stop)
-│   ├── test_tool_api.py                # 19  (Phase A + Phase B coding service)
+│   ├── test_tool_api.py                # 23  (Phase A + Phase B + Phase C idempotency)
 │   ├── test_stage.py                   # 11  (Phase B stage translator)
 │   ├── test_task_result.py             # 10  (Phase B result derivation)
 │   ├── test_repo_inspect.py            # 9   (Phase B inspect_repo helpers)
@@ -461,7 +461,7 @@ agent_kanban/
 ## Run log
 ```bash
 $ .venv/bin/python -m pytest
-======================== 147 passed in 6.34s =========================
+======================== 156 passed in 9.47s =========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (3 workspaces created, marker files written)

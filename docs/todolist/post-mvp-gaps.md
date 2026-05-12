@@ -53,7 +53,11 @@
     `dashboard/mode.py` (plan/build/review whitelist) + 擴充 AgentRunner Protocol
     accept-and-honor `allowed_tools=` kwarg + orchestrator 從 issue 的 `mode:*`
     label 讀模式並透傳給 runner
-  - **Phase C (per-need):** idempotency / multi-repo / quota / sandbox 三層防線
+  - **Phase C (進行中):**
+    ✅ idempotency (新增 `idempotency_keys` 表 + `bridge.lookup_idempotency_key` /
+    `record_idempotency_key` / `clear_expired_idempotency_keys`,
+    `submit_coding_task` 支援 `idempotency_key` 欄位,同 key 在 1h 內回原 task_id);
+    ⏳ multi-repo / quota / sandbox 三層防線
   - 跟 Docker Phase 2 完全正交,可平行做
 - [ ] **Docker scaffolding Phase 2:雙容器爆炸半徑切分** — 把 `opencode` CLI
   從 dashboard 容器抽離到獨立的 `symphony-opencode` service

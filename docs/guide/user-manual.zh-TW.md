@@ -80,7 +80,7 @@ endpoint,而且只有你明確指定它時才會。
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# Sanity:應該 147 tests 全綠
+# Sanity:應該 156 tests 全綠
 .venv/bin/python -m pytest
 
 # 純記憶體 demo (不走 Tool API、不需 LLM)
@@ -607,7 +607,7 @@ docstring — 想保持 tool 註冊跟服務同步,grep 一行就能拿出來。
 當下面這些都成立,就算「MVP 完成」(2026-05-09 在 commit `515ad66` 驗過):
 
 - [x] `docker compose up -d` 把 dashboard 帶起來在 `:17957`
-- [x] `pytest` 在本機全綠 (**147 tests**,2026-05-09)
+- [x] `pytest` 在本機全綠 (**156 tests**,2026-05-11)
 - [x] `python examples/tool_api_client.py` 能在新拉起的 stack 上跑完整
       Tool API round-trip
 - [x] `examples/WORKFLOW.docker.md` 是可直接跑的預設,LLM 透過

@@ -2,7 +2,7 @@
 
 > [English README →](../README.md)
 
-> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**147 個單元測試全綠**(MVP 核心 29 + Dashboard 47 + Runner 11 + Tool API 19 + Phase B helpers 30 + mode 11),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
+> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**156 個單元測試全綠**(MVP 核心 29 + Dashboard 52 + Runner 11 + Tool API 23 + Phase B helpers 30 + mode 11),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
 
 ## 架構總覽
 
@@ -87,7 +87,7 @@
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 147 = MVP 29 + Dashboard 47 + Runner 11 + Tool API 19 + Phase B helpers 30 + mode 11
+# 156 = MVP 29 + Dashboard 52 + Runner 11 + Tool API 23 + Phase B helpers 30 + mode 11
 .venv/bin/python -m pytest
 
 # 純記憶體 demo,無外部依賴
@@ -385,17 +385,17 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 147 tests
+├── tests/                     # 156 tests
 │   ├── conftest.py
 │   ├── test_workflow.py       # 7 tests
 │   ├── test_workspace.py      # 8 tests
 │   ├── test_agent_runner.py   # 18 tests (15 + 3 allowed_tools override)
 │   ├── test_orchestrator.py   # 7 tests
-│   ├── test_dashboard_bridge.py        # 12 tests (8 + 4 persistent retry queue)
+│   ├── test_dashboard_bridge.py        # 17 tests (12 + 5 idempotency keys)
 │   ├── test_dashboard_orchestrator.py  # 6 tests
 │   ├── test_dashboard_server.py        # 12 tests
 │   ├── test_dashboard_extras.py        # 17 tests (13 + 4 emergency stop)
-│   ├── test_tool_api.py                # 19 tests (Phase A + Phase B coding service)
+│   ├── test_tool_api.py                # 23 tests (Phase A + B + C idempotency)
 │   ├── test_stage.py                   # 11 tests (Phase B stage translator)
 │   ├── test_task_result.py             # 10 tests (Phase B result derivation)
 │   ├── test_repo_inspect.py            # 9 tests  (Phase B inspect_repo helpers)
@@ -411,7 +411,7 @@ agent_kanban/
 
 ```bash
 $ .venv/bin/python -m pytest
-======================== 147 passed in 6.34s =========================
+======================== 156 passed in 9.47s =========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (正常完成,3 個 workspace 都建立並寫入 marker 檔)

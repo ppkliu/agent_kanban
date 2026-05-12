@@ -85,7 +85,7 @@ one (default: Ollama on the host).
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# Sanity: 147 tests should pass
+# Sanity: 156 tests should pass
 .venv/bin/python -m pytest
 
 # Self-contained demo (no Tool API, no LLM)
@@ -637,7 +637,7 @@ Treat the framework as **MVP-complete** if all of these are true (verified
 2026-05-09 at commit `515ad66`):
 
 - [x] `docker compose up -d` brings the dashboard up at `:17957`
-- [x] `pytest` is green locally (**147 tests** as of 2026-05-09)
+- [x] `pytest` is green locally (**156 tests** as of 2026-05-11)
 - [x] `python examples/tool_api_client.py` runs the full Tool API
       round-trip against a fresh stack
 - [x] `examples/WORKFLOW.docker.md` is a runnable default that an
