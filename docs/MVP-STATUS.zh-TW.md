@@ -55,7 +55,7 @@ MVP 框架的契約:**對上游 agent 暴露 6 個語意化 tool、opt-in dashbo
 | 缺口 | 嚴重度 | 為什麼留在 MVP 之外 |
 |---|---|---|
 | Workspace 沙箱升級 (firecracker / gVisor / rootless) | 高 | 單容器 Phase 1 已提供容器隔離;再強的邊界是升級路徑 |
-| Prompt injection 防護 | 高 | 需要決定 (token-level 隔離 vs system message 強化);MVP 預設 trusted-tenant |
+| Prompt injection 防護 | 高 | **設計完成** (見 [`prompt-injection-defense.md`](design/prompt-injection-defense.md)) — 推薦 (A)+(B) framing 雙層;Phase 1 實作 ~50 LOC 待動。MVP 目前以 trusted-tenant 模式運行。 |
 | 雙容器爆炸半徑切分 | 中 | OpenCodeRunner subprocess 目前可用;HTTP-based runner 是已[分析過](design/opencode-two-container-analysis.md)的後續工作 |
 | OpenTelemetry tracing / metrics | 中 | Dashboard event log + uvicorn 結構化 log 涵蓋 MVP 審計需求 |
 | Multi-repo pool | 中 | 單 tracker 對首次整合者最不意外 |

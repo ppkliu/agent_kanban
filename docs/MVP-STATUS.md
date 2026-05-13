@@ -57,7 +57,7 @@ Tracked in detail in [post-mvp-gaps.md](todolist/post-mvp-gaps.md).
 | Gap | Severity | Why it's post-MVP |
 |---|---|---|
 | Workspace sandbox upgrades (firecracker / gVisor / rootless) | High | Single-container Phase 1 already provides container isolation; harder boundaries are an upgrade path |
-| Prompt injection defence | High | Requires a design decision (token-level isolation vs system-message hardening); MVP runs trusted-tenant only |
+| Prompt injection defence | High | **Design done** (see [`prompt-injection-defense.md`](design/prompt-injection-defense.md)) — recommends (A)+(B) framing layer; Phase 1 implementation ~50 LOC pending. MVP currently runs trusted-tenant only. |
 | Two-container blast-radius split | Medium | OpenCodeRunner subprocess works today; HTTP-based runner is the [analyzed](design/opencode-two-container-analysis.md) follow-up |
 | OpenTelemetry tracing / metrics | Medium | dashboard event log + structured uvicorn logs cover MVP audit needs |
 | Multi-repo pool | Medium | Single-tracker MVP is the path of least surprise for first-time integrators |

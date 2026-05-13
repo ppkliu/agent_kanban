@@ -407,7 +407,8 @@ agent_kanban/
 │   │   ├── symphony-dashboard-spec.md
 │   │   ├── agent-invocation-and-adapters.md
 │   │   ├── opencode-two-container-analysis.md   # Phase 2 cross-container options
-│   │   └── coding-service-tool-api.md           # Q3-aligned tool API for upstream LLM agents
+│   │   ├── coding-service-tool-api.md           # Q3-aligned tool API for upstream LLM agents
+│   │   └── prompt-injection-defense.md          # 5-option defence analysis + MVP recommendation
 │   └── todolist/
 │       ├── symphony-dashboard-todolist.md   # P0–W6 sprint plan
 │       └── post-mvp-gaps.md                 # production gaps & roadmap

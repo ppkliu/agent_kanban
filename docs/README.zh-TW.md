@@ -356,7 +356,8 @@ agent_kanban/
 │   │   ├── symphony-dashboard-spec.md
 │   │   ├── agent-invocation-and-adapters.md
 │   │   ├── opencode-two-container-analysis.md   # Phase 2 跨容器方案分析
-│   │   └── coding-service-tool-api.md           # Q3 對齊:對外 LLM agent 的 tool API 設計
+│   │   ├── coding-service-tool-api.md           # Q3 對齊:對外 LLM agent 的 tool API 設計
+│   │   └── prompt-injection-defense.md          # Prompt injection 5 種防護方案分析
 │   └── todolist/
 │       ├── symphony-dashboard-todolist.md   # P0–W6 sprint plan
 │       └── post-mvp-gaps.md                 # production gaps & roadmap
