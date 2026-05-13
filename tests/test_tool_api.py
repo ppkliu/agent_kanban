@@ -552,6 +552,72 @@ def test_submit_with_different_idempotency_keys_creates_separate_tasks(
     assert r1.json()["task_id"] != r2.json()["task_id"]
 
 
+def test_submit_rate_limit_returns_429_when_cap_exceeded(app_ctx, monkeypatch) -> None:
+    """With SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE=2, the 3rd submit in a
+    60-second window should be rejected with 429 + Retry-After."""
+    monkeypatch.setenv("SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE", "2")
+    client = app_ctx["client"]
+
+    for i in range(2):
+        r = client.post(
+            "/api/v1/tools/submit_coding_task",
+            json={"task": f"under-limit {i}", "repo": "memory"},
+        )
+        assert r.status_code == 200, f"submit {i} unexpectedly failed: {r.text}"
+
+    over = client.post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "over-limit", "repo": "memory"},
+    )
+    assert over.status_code == 429
+    assert over.headers.get("retry-after") == "60"
+    assert "rate limit" in over.json()["detail"].lower()
+
+
+def test_submit_rate_limit_unset_means_unlimited(app_ctx, monkeypatch) -> None:
+    """Default (env var unset) should bypass the rate limit entirely."""
+    monkeypatch.delenv("SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE", raising=False)
+    client = app_ctx["client"]
+    # 10 submits in quick succession should all succeed
+    for i in range(10):
+        r = client.post(
+            "/api/v1/tools/submit_coding_task",
+            json={"task": f"no-limit {i}", "repo": "memory"},
+        )
+        assert r.status_code == 200, f"submit {i} unexpectedly failed: {r.text}"
+
+
+def test_idempotency_replay_does_not_count_against_rate_limit(
+    app_ctx, monkeypatch
+) -> None:
+    """A retried submit with the same idempotency_key short-circuits BEFORE
+    the rate limit check — replays don't burn quota."""
+    monkeypatch.setenv("SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE", "1")
+    client = app_ctx["client"]
+
+    # First submit succeeds (quota consumed)
+    r1 = client.post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory", "idempotency_key": "replay-test"},
+    )
+    assert r1.status_code == 200
+
+    # Idempotency replay — same key — should NOT trigger 429
+    r2 = client.post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory", "idempotency_key": "replay-test"},
+    )
+    assert r2.status_code == 200
+    assert r2.json()["task_id"] == r1.json()["task_id"]
+
+    # But a fresh submit (no key, no idempotency) IS blocked at cap=1
+    r3 = client.post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "fresh", "repo": "memory"},
+    )
+    assert r3.status_code == 429
+
+
 def test_idempotency_short_circuit_skips_label_mutation(app_ctx) -> None:
     """If we resubmit with same key but different mode, the original task
     is returned unchanged — we never mutate an existing issue."""

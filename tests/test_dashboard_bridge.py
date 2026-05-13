@@ -234,3 +234,42 @@ def test_clear_expired_idempotency_keys_reaps_only_expired(
     assert deleted == 2
     assert bridge.lookup_idempotency_key("fresh") == "tsk_fresh"
     assert bridge.lookup_idempotency_key("stale") is None
+
+
+# --------------------------------------------------------------------------- #
+# Submit log (Tool API Phase C quota — global rate limit)                     #
+# --------------------------------------------------------------------------- #
+
+def test_count_submits_since_returns_zero_for_fresh_db(bridge: DashboardBridge) -> None:
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+    assert bridge.count_submits_since(since) == 0
+
+
+def test_record_submit_then_count_in_window(bridge: DashboardBridge) -> None:
+    from datetime import datetime, timedelta, timezone
+    for i in range(3):
+        bridge.record_submit(f"tsk_{i}")
+    since = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+    assert bridge.count_submits_since(since) == 3
+
+
+def test_count_submits_since_window_in_future_returns_zero(bridge: DashboardBridge) -> None:
+    """If `since` is in the future, no rows match — useful sanity check."""
+    from datetime import datetime, timedelta, timezone
+    bridge.record_submit("tsk_a")
+    future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    assert bridge.count_submits_since(future) == 0
+
+
+def test_clear_old_submits_with_negative_retention_reaps_all(
+    bridge: DashboardBridge,
+) -> None:
+    bridge.record_submit("tsk_a")
+    bridge.record_submit("tsk_b")
+    deleted = bridge.clear_old_submits(retention_hours=-1.0)
+    assert deleted == 2
+    # Fresh count window should now be empty
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+    assert bridge.count_submits_since(since) == 0
