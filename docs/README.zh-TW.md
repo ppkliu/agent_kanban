@@ -2,7 +2,7 @@
 
 > [English README →](../README.md)
 
-> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**171 個單元測試全綠**(MVP 核心 29 + Dashboard 56 + Runner 11 + Tool API 26 + Phase B helpers 30 + mode 11 + metrics 8),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
+> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**193 個單元測試全綠**(MVP 核心 29 + Dashboard 56 + Runner 11 + Tool API 26 + Phase B helpers 30 + mode 11 + metrics 8 + Linear 22),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
 
 ## 架構總覽
 
@@ -88,7 +88,7 @@
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 171 = MVP 29 + Dashboard 56 + Runner 11 + Tool API 26 + Phase B helpers 30 + mode 11 + metrics 8
+# 193 = MVP 29 + Dashboard 56 + Runner 11 + Tool API 26 + Phase B helpers 30 + mode 11 + metrics 8 + Linear 22
 .venv/bin/python -m pytest
 
 # 純記憶體 demo,無外部依賴
@@ -323,12 +323,13 @@ orch.add_event_listener(my_listener)
 從 README 抽出來的「未完成項目」(workspace 沙箱、prompt injection 防護、
 雙容器爆炸半徑切分、tracing、多人 RBAC 等) 都搬到一份獨立
 文件:**[docs/todolist/post-mvp-gaps.md](todolist/post-mvp-gaps.md)** (目前 2
-高 / 3 中 / 4 低)。已落地:Docker scaffolding (Phase 1 單容器)、Coding
+高 / 3 中 / 3 低)。已落地:Docker scaffolding (Phase 1 單容器)、Coding
 Service Tool API (Phase A + Phase B 含 per-task mode 硬性 whitelist +
 Phase C idempotency)、持久化 retry queue、雙語反向代理 / TLS 部署章節、
 GH Actions 三 job CI smoke test、中英雙語 `/api/v1/*` API reference、
 Prometheus `/metrics` 暴露 (9 個零依賴 counter/gauge)、Phase C quota
-(每分鐘 submit rate limit,超過回 429 + `Retry-After`)。
+(每分鐘 submit rate limit,超過回 429 + `Retry-After`)、Linear GraphQL
+tracker adapter。
 
 ## 檔案結構
 
@@ -364,7 +365,7 @@ agent_kanban/
 │   ├── __main__.py            # CLI entry: python -m symphony_mvp
 │   ├── models.py              # Issue / RunAttempt / RunState / Workspace
 │   ├── workflow.py            # WORKFLOW.md 解析 + Jinja2 strict render
-│   ├── tracker.py             # Protocol + InMemory + GitHubIssues
+│   ├── tracker.py             # Protocol + InMemory + GitHubIssues + Linear
 │   ├── workspace.py           # 三大不變式 + hooks
 │   ├── agent_runner.py        # OpenCode / AnthropicAPI / ClaudeCLI / Echo runners
 │   ├── orchestrator.py        # Tick loop + FSM + reconcile + dispatch + bridge hooks
@@ -390,7 +391,7 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 171 tests
+├── tests/                     # 193 tests
 │   ├── conftest.py
 │   ├── test_workflow.py       # 7 tests
 │   ├── test_workspace.py      # 8 tests
@@ -405,7 +406,8 @@ agent_kanban/
 │   ├── test_task_result.py             # 10 tests (Phase B result derivation)
 │   ├── test_repo_inspect.py            # 9 tests  (Phase B inspect_repo helpers)
 │   ├── test_mode.py                    # 11 tests (Phase B mode whitelist)
-│   └── test_metrics.py                 # 8 tests  (Prometheus /metrics endpoint)
+│   ├── test_metrics.py                 # 8 tests  (Prometheus /metrics endpoint)
+│   └── test_linear_tracker.py          # 22 tests (Linear GraphQL adapter)
 └── examples/
     ├── WORKFLOW.md            # 完整範例 (本機 kanban + opencode)
     ├── WORKFLOW.docker.md     # Docker 友善版預設 (memory + opencode)
@@ -417,7 +419,7 @@ agent_kanban/
 
 ```bash
 $ .venv/bin/python -m pytest
-======================== 171 passed in 11.51s ========================
+======================== 193 passed in 9.11s =========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (正常完成,3 個 workspace 都建立並寫入 marker 檔)

@@ -11,8 +11,8 @@
 > container for code generation). The default tracker is the project's own
 > SQLite-backed kanban — there is no required cloud or SaaS dependency. Local
 > LLMs are the primary runtime target; Claude Code CLI, Anthropic API, and
-> Codex are documented secondary backends. Pure Python 3.10+, **171 unit tests
-> green** (29 MVP core + 56 dashboard + 11 runner + 26 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 8 metrics + 1 ClaudeCLI override), spec-aligned React
+> Codex are documented secondary backends. Pure Python 3.10+, **193 unit tests
+> green** (29 MVP core + 56 dashboard + 11 runner + 26 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 8 metrics + 22 Linear adapter + 1 ClaudeCLI override), spec-aligned React
 > observatory, all four pluggable runners selectable from a single line of
 > `WORKFLOW.md`.
 
@@ -102,7 +102,7 @@ For development / CI without Docker:
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 171 tests = 29 MVP core + 56 dashboard + 11 runner + 26 tool API + 30 phase B helpers + 11 mode/override + 8 metrics
+# 193 tests = 29 MVP core + 56 dashboard + 11 runner + 26 tool API + 30 phase B helpers + 11 mode/override + 8 metrics + 22 Linear
 .venv/bin/python -m pytest
 
 # self-contained end-to-end demo (no external API)
@@ -373,13 +373,14 @@ The honest list of what's still missing — workspace sandboxing,
 prompt-injection defence, two-container blast-radius split, tracing,
 multi-user RBAC, and a few smaller items — has its own file:
 **[docs/todolist/post-mvp-gaps.md](docs/todolist/post-mvp-gaps.md)** (2 High,
-3 Medium, 4 Low items at last count). Shipped so far: Docker scaffolding
+3 Medium, 3 Low items at last count). Shipped so far: Docker scaffolding
 (Phase 1, single-container), Coding Service Tool API (Phase A + B including
 per-task mode hard whitelist + Phase C idempotency), persistent retry queue,
 bilingual reverse-proxy / TLS deployment chapter, 3-job GH Actions CI smoke
 test, a curated bilingual `/api/v1/*` API reference, Prometheus
-`/metrics` exposition (9 zero-dependency counters), and Phase C quota
-(per-minute submit rate limit with 429 + `Retry-After`).
+`/metrics` exposition (9 zero-dependency counters), Phase C quota
+(per-minute submit rate limit with 429 + `Retry-After`), and a Linear
+GraphQL tracker adapter.
 
 ## Layout
 
@@ -415,7 +416,7 @@ agent_kanban/
 │   ├── __main__.py            # CLI: python -m symphony_mvp
 │   ├── models.py              # Issue / RunAttempt / RunState / Workspace
 │   ├── workflow.py            # WORKFLOW.md parser + Jinja2 strict render
-│   ├── tracker.py             # Protocol + InMemory + GitHubIssues
+│   ├── tracker.py             # Protocol + InMemory + GitHubIssues + Linear
 │   ├── workspace.py           # invariants + hooks
 │   ├── agent_runner.py        # OpenCode / AnthropicAPI / ClaudeCLI / Echo runners
 │   ├── orchestrator.py        # tick + FSM + reconcile + dispatch + bridge hooks
@@ -441,7 +442,7 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 171 tests
+├── tests/                     # 193 tests
 │   ├── conftest.py
 │   ├── test_workflow.py                # 7
 │   ├── test_workspace.py               # 8
@@ -456,7 +457,8 @@ agent_kanban/
 │   ├── test_task_result.py             # 10  (Phase B result derivation)
 │   ├── test_repo_inspect.py            # 9   (Phase B inspect_repo helpers)
 │   ├── test_mode.py                    # 11  (Phase B mode whitelist)
-│   └── test_metrics.py                 # 8   (Prometheus /metrics endpoint)
+│   ├── test_metrics.py                 # 8   (Prometheus /metrics endpoint)
+│   └── test_linear_tracker.py          # 22  (Linear GraphQL adapter)
 └── examples/
     ├── WORKFLOW.md            # full example (local kanban + opencode)
     ├── WORKFLOW.docker.md     # docker-friendly memory + opencode default
@@ -467,7 +469,7 @@ agent_kanban/
 ## Run log
 ```bash
 $ .venv/bin/python -m pytest
-======================== 171 passed in 11.51s ========================
+======================== 193 passed in 9.11s =========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (3 workspaces created, marker files written)

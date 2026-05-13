@@ -1,7 +1,7 @@
 # Symphony MVP — Completion Status
 
 > 中文版: [MVP-STATUS.zh-TW.md](MVP-STATUS.zh-TW.md)
-> Audit date: **2026-05-13** · Tests: **171 passing** (rolling — re-stamp at each MVP-impacting commit)
+> Audit date: **2026-05-13** · Tests: **193 passing** (rolling — re-stamp at each MVP-impacting commit)
 
 A 30-second audit answering "is Symphony's MVP framework complete?"
 For deeper docs see the [user manual](guide/user-manual.md), the
@@ -36,11 +36,12 @@ via `WORKFLOW.md`**.
 | Phase C idempotency — safe retry of `submit_coding_task` via `idempotency_key` | ✅ | this batch | `pytest tests/test_dashboard_bridge.py -k idempotency` |
 | Prometheus `/metrics` — 9 zero-dependency counters scrapeable by Prometheus/Grafana | ✅ | this batch | `curl http://localhost:17957/metrics` |
 | Phase C quota — env-configured per-minute submit rate limit; 429 + `Retry-After` | ✅ | this batch | `pytest tests/test_tool_api.py -k rate_limit` |
+| Linear adapter — second production tracker (GraphQL) validating the abstraction | ✅ | this batch | `pytest tests/test_linear_tracker.py` |
 | Emergency stop-all (operator kill switch) | ✅ | `1c2a45a` `2448f65` | TopBar red button in browser, or `POST /api/v1/emergency_stop` |
 | Four pluggable runners (echo / opencode / anthropic_api / claude_cli) | ✅ | `3b81799` `2ff85ba` | edit `WORKFLOW.md`'s `runner.kind` and restart |
 | Bilingual user manual + Tool API client demo | ✅ | `2fa23f1` `09dbd8c` `3754e0d` | open [user-manual.md](guide/user-manual.md) |
 | 5-column kanban + 6-tab issue drawer | ✅ | `2c9ef2f` and earlier | open `http://localhost:17957` |
-| Self-contained test suite (no LLM / no GitHub required) | ✅ | 171 tests | `.venv/bin/python -m pytest` |
+| Self-contained test suite (no LLM / no GitHub required) | ✅ | 193 tests | `.venv/bin/python -m pytest` |
 | Bearer-token auth on REST + WebSocket | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
 **Net result**: every behavioural promise in the README and user manual
@@ -73,7 +74,7 @@ Tracked in detail in [post-mvp-gaps.md](todolist/post-mvp-gaps.md).
 # 1. Clone + sanity-check the test suite (no LLM, no Docker required)
 git clone <this-repo> && cd agent_kanban
 uv venv && uv pip install -e ".[dev,dashboard]"
-.venv/bin/python -m pytest                  # expect: 171 passed
+.venv/bin/python -m pytest                  # expect: 193 passed
 
 # 2. Bring the framework up
 cp examples/WORKFLOW.docker.md WORKFLOW.md
@@ -99,7 +100,7 @@ a regression against the MVP completion line.
 |---|---|
 | Audit date | **2026-05-13** |
 | Commit | rolling — see `git log` for latest checkpoint |
-| Tests passing | **171** (`pytest -q`) |
+| Tests passing | **193** (`pytest -q`) |
 | Frontend tests | **45** (`npm test`) |
 | Docker image | `symphony-dashboard:dev` (single-container, Phase 1) |
 | Tool API endpoints live | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task` |
