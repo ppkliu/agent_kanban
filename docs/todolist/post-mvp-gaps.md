@@ -10,7 +10,7 @@
 |----------|------|
 | **High** | 2 |
 | Medium   | 3 |
-| Low      | 4 |
+| Low      | 3 |
 
 ---
 
@@ -116,8 +116,15 @@
 
 ## Low — 屬於更廣 backlog,當前不阻塞 DoD
 
-- [ ] **Linear adapter** 仍是 stub
-  - 對照 GitHub adapter 寫 GraphQL 版本 (~150 LOC)
+- [x] **Linear adapter** — `LinearTracker` 已落地
+  - `symphony_mvp/tracker.py` 新增 `LinearTracker` (GraphQL,~180 行) +
+    `build_tracker("linear", ...)` 工廠分支;`tracker.repo` 用 Linear team
+    key (例如 `ENG` → `ENG-123`);state mapping 涵蓋 type-driven (started /
+    unstarted / completed / canceled / backlog) 與 name-driven (`In Review` /
+    `Blocked` / `Ready` / `Triage`);分頁透過 `pageInfo.endCursor`
+  - 22 個 unit test (mock `requests.post`) 涵蓋 state mapping (10 cases)、
+    `_to_issue` 邊界、pagination、reconcile 找不到 issue、GraphQL errors[]
+    surface、headers shape、build_tracker 工廠驗證
 - [ ] **`linear_graphql` 動態工具** (SPEC §14 提到)
   - 用 GitHub 時不需要;若要接 Linear,包成 MCP server 一層即可
 - [ ] **Dashboard 多人 RBAC**
