@@ -144,6 +144,23 @@ Set `DASHBOARD_API_KEY` (env or `--api-key`) and every REST + WebSocket call
 needs `Authorization: Bearer <token>`. Leave it empty for single-user
 laptops; **always set it** for anything else.
 
+### 2.4 Submit rate limit (optional)
+
+To cap the load any upstream LLM agent can put on the Tool API, set
+`SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE=N`. When more than N
+`submit_coding_task` calls land within a 60-second window, the next call
+returns **HTTP 429** with `Retry-After: 60`. Unset or `0` = unlimited.
+
+```bash
+# .env — allow at most 30 submits per minute
+SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE=30
+```
+
+Idempotency replays do NOT count against the cap (the short-circuit fires
+before the rate-limit check), so a flaky network won't burn quota.
+Reverse-proxy rate-limits (see §4.2 nginx `limit_req_zone`) stack on top
+if you need per-IP or per-route policies.
+
 ---
 
 ## 3. The dashboard (operator's view)

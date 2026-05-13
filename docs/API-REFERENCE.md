@@ -76,6 +76,10 @@ For a runnable end-to-end demo using only the stdlib see
   (default); `review` = read+grep only.
 - **`idempotency_key`**: 1-128 chars, opaque to Symphony. Same key within
   1h returns the original `task_id` instead of creating a duplicate task.
+- **Rate limit** (optional, off by default): set
+  `SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE=N` on the server to cap submits.
+  Excess submits return **`429 Too Many Requests`** with `Retry-After: 60`.
+  Idempotency replays bypass the limit (short-circuit fires first).
 - **`status`** (in `check_task_status`): `pending` / `running` / `done` /
   `failed` / `cancelled`.
 - **`stage`** (in `check_task_status`): `queued` / `exploring_codebase` /

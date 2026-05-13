@@ -73,6 +73,10 @@ curl -X POST http://localhost:17957/api/v1/tools/get_task_result \
   `plan` = read+grep+bash;`build` = 全工具 (預設);`review` = read+grep only。
 - **`idempotency_key`**:1–128 字元,Symphony 不解讀內容。同 key 1h 內回原
   `task_id`,不會建出第二個 task。
+- **Rate limit** (選用,預設關閉):server 上設
+  `SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE=N` 限制 submit 數。超過會回
+  **`429 Too Many Requests`** 加 `Retry-After: 60`。Idempotency replay
+  不算 (short-circuit 先發生)。
 - **`status`** (in `check_task_status`):`pending` / `running` / `done` /
   `failed` / `cancelled`。
 - **`stage`** (in `check_task_status`):`queued` / `exploring_codebase` /

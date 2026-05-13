@@ -57,7 +57,11 @@
     ✅ idempotency (新增 `idempotency_keys` 表 + `bridge.lookup_idempotency_key` /
     `record_idempotency_key` / `clear_expired_idempotency_keys`,
     `submit_coding_task` 支援 `idempotency_key` 欄位,同 key 在 1h 內回原 task_id);
-    ⏳ multi-repo / quota / sandbox 三層防線
+    ✅ quota — submit 全域 rate limit (新增 `submit_log` 表 +
+    `bridge.record_submit` / `count_submits_since` / `clear_old_submits`,
+    env var `SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE` 控制 N/分鐘上限,
+    超過回 429 + `Retry-After: 60`;idempotency replay 不計入額度);
+    ⏳ multi-repo / sandbox 三層防線
   - 跟 Docker Phase 2 完全正交,可平行做
 - [ ] **Docker scaffolding Phase 2:雙容器爆炸半徑切分** — 把 `opencode` CLI
   從 dashboard 容器抽離到獨立的 `symphony-opencode` service

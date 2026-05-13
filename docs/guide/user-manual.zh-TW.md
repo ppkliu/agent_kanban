@@ -137,6 +137,22 @@ Native 的 port 是 **7957**;Docker 對 host 的 port 是 **17957**。
 設了 `DASHBOARD_API_KEY` (env 或 `--api-key`),所有 REST + WebSocket 都要
 帶 `Authorization: Bearer <token>`。單機自用可以留空;**其他場合一律設**。
 
+### 2.4 Submit rate limit (選用)
+
+想限制上游 LLM agent 對 Tool API 的負載,設
+`SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE=N`。60 秒內超過 N 次
+`submit_coding_task` 就回 **HTTP 429** 加 `Retry-After: 60`。
+不設或設 `0` = 不限制。
+
+```bash
+# .env — 限制每分鐘最多 30 次 submit
+SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE=30
+```
+
+Idempotency replay **不算進額度** (short-circuit 在 rate-limit 之前發生),
+網路抖動的重試不會燒掉 quota。Reverse-proxy 的 rate-limit (見 §4.2 nginx
+`limit_req_zone`) 可以疊在上面,做 per-IP 或 per-route 的更細粒度限制。
+
 ---
 
 ## 3. Dashboard (operator 視角)
