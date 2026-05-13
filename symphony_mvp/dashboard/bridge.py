@@ -353,6 +353,47 @@ class DashboardBridge:
             )
 
     # ------------------------------------------------------------------ #
+    # Submit log (Tool API Phase C quota — global rate limit on submits)
+    # ------------------------------------------------------------------ #
+    def record_submit(self, task_id: str) -> None:
+        """Log a successful submit_coding_task. Stamped at call time so the
+        rate window is honest even under clock skew between request/response."""
+        from datetime import datetime, timezone
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT INTO submit_log (task_id, submitted_at) VALUES (?, ?)",
+                (task_id, datetime.now(timezone.utc).isoformat()),
+            )
+
+    def count_submits_since(self, since_iso: str) -> int:
+        """Count submits whose ``submitted_at >= since_iso``.
+
+        The submit handler computes ``since_iso = now - window_seconds`` and
+        compares the result against the configured per-minute cap.
+        """
+        with self._lock:
+            row = self._db.execute(
+                "SELECT COUNT(*) FROM submit_log WHERE submitted_at >= ?",
+                (since_iso,),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
+    def clear_old_submits(self, retention_hours: float = 24.0) -> int:
+        """Reap rows older than ``retention_hours``. Returns deleted count.
+
+        Default 24h matches the user-facing observability window: an operator
+        can still review yesterday's submit pattern when sizing the cap."""
+        from datetime import datetime, timedelta, timezone
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(hours=retention_hours)
+        ).isoformat()
+        with self._lock, self._db:
+            cursor = self._db.execute(
+                "DELETE FROM submit_log WHERE submitted_at < ?", (cutoff,)
+            )
+            return cursor.rowcount
+
+    # ------------------------------------------------------------------ #
     # Idempotency keys (Tool API Phase C — safe retry of submit_coding_task)
     # ------------------------------------------------------------------ #
     def lookup_idempotency_key(self, key: str) -> str | None:
