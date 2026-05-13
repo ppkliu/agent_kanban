@@ -70,6 +70,20 @@ CREATE TABLE IF NOT EXISTS attempt_history (
 CREATE INDEX IF NOT EXISTS idx_attempt_history_issue
     ON attempt_history (issue_id, attempt_number);
 
+-- Submit log for the Tool API global rate limiter (Phase C quota).
+-- One row per successful submit_coding_task call. The submit handler counts
+-- rows whose submitted_at is within the rate-limit window (default 60s) and
+-- returns 429 when the env-configured per-minute cap is exceeded. Rows are
+-- retained for ~1 day for ops debugging and reaped by a periodic cleanup.
+CREATE TABLE IF NOT EXISTS submit_log (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id       TEXT    NOT NULL,
+    submitted_at  TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_submit_log_submitted
+    ON submit_log (submitted_at);
+
 -- Idempotency keys for Tool API submit_coding_task (Phase C).
 -- Lets upstream LLM agents safely retry submits on network blips —
 -- the same key within TTL returns the original task_id rather than
