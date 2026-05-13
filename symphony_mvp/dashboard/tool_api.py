@@ -319,6 +319,19 @@ def _tracker_kind(state: "DashboardAppState") -> str:
     return state.orch.workflow.config.tracker_kind
 
 
+def _submit_rate_limit_per_minute() -> int:
+    """Read the global submit-rate-limit env var. 0 (or unset, or unparseable)
+    means unlimited. Read every request so operators can re-tune without
+    restarting the dashboard."""
+    import os
+    raw = os.environ.get("SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE", "0")
+    try:
+        n = int(raw)
+    except ValueError:
+        return 0
+    return n if n > 0 else 0
+
+
 # --------------------------------------------------------------------------- #
 # Endpoints                                                                   #
 # --------------------------------------------------------------------------- #
@@ -427,10 +440,31 @@ def post_submit_coding_task(
 
     # Idempotency short-circuit: if the caller sent a key we've seen before
     # within TTL, return the original task_id instead of creating a duplicate.
+    # Runs BEFORE the rate limit check — replaying a client retry shouldn't
+    # cost the caller their quota.
     if body.idempotency_key and hasattr(state.bridge, "lookup_idempotency_key"):
         prior = state.bridge.lookup_idempotency_key(body.idempotency_key)
         if prior is not None:
             return SubmitTaskOut(task_id=prior)
+
+    # Global rate limit (Phase C quota). Unset / 0 = unlimited.
+    cap = _submit_rate_limit_per_minute()
+    if cap > 0 and hasattr(state.bridge, "count_submits_since"):
+        from datetime import datetime, timedelta, timezone
+        window_seconds = 60
+        since = (
+            datetime.now(timezone.utc) - timedelta(seconds=window_seconds)
+        ).isoformat()
+        recent = state.bridge.count_submits_since(since)
+        if recent >= cap:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"submit rate limit exceeded: {recent}/{cap} in last "
+                    f"{window_seconds}s — wait and retry"
+                ),
+                headers={"Retry-After": str(window_seconds)},
+            )
 
     issue = _make_task_issue(body)
     tracker = state.orch.tracker
@@ -445,6 +479,10 @@ def post_submit_coding_task(
     # we never advertise a task_id whose underlying issue doesn't exist.
     if body.idempotency_key and hasattr(state.bridge, "record_idempotency_key"):
         state.bridge.record_idempotency_key(body.idempotency_key, issue.id)
+
+    # Log the submit for the rate-limiter's window count + ops observability.
+    if hasattr(state.bridge, "record_submit"):
+        state.bridge.record_submit(issue.id)
 
     return SubmitTaskOut(task_id=issue.id)
 
