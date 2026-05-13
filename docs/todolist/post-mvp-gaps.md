@@ -29,9 +29,17 @@
   - Docker 模式 Phase 2 (見下方 Medium):雙容器把 opencode 抽出去後,
     爆炸半徑會縮小到 workspace volume
   - 進階升級路徑:firecracker / gVisor / rootless Docker
-- [ ] **Prompt injection 防護**
-  - 在 `render_prompt` 後做 token-level 隔離,或用 system message 強化
-  - 需要先決定:在 runner 那層做 (集中) 還是在 workflow render 後做 (early)?
+- [ ] **Prompt injection 防護** (設計完成,實作待動工)
+  - **Stage 1 (分析,已完成):**
+    [`docs/design/prompt-injection-defense.md`](../design/prompt-injection-defense.md)
+    列了 5 種防護選項 (system-message hardening / template framing /
+    token-level isolation / tool sanitisation / LLM-judge) 並推薦
+    **(A) + (B) 雙層** 作為 MVP Phase 1 — 在 `workflow.render_prompt`
+    內強制套 `<<<ISSUE_DATA_BEGIN/END>>>` framing,WORKFLOW.md 範例
+    再加 system-message preamble。Phase 2 留給 token-level isolation
+    (per-runner 客製),Phase C governance 才考慮 LLM-judge
+  - **Stage 2 (實作,待開):** ~50 LOC 加進 `workflow.py` +
+    4 個 unit tests + 範例 WORKFLOW.md 更新
 
 ## Medium — MVP 可上線但長期會痛
 
