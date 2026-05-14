@@ -645,3 +645,104 @@ def test_idempotency_short_circuit_skips_label_mutation(app_ctx) -> None:
     # Original mode:build label preserved; no mode:review added
     assert "mode:build" in issue_after.labels
     assert "mode:review" not in issue_after.labels
+
+
+# --------------------------------------------------------------------------- #
+# W3C trace_id propagation (partial close on Tracing/Metrics gap)             #
+# --------------------------------------------------------------------------- #
+
+import re as _re_for_trace_tests
+
+_TRACE_ID_RE = _re_for_trace_tests.compile(r"^[0-9a-f]{32}$")
+
+
+def test_submit_returns_trace_id_in_response(app_ctx) -> None:
+    """Without a traceparent header, the response still carries a fresh
+    32-hex trace_id so callers can use it for log correlation."""
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory"},
+    )
+    assert r.status_code == 200
+    trace_id = r.json()["trace_id"]
+    assert _TRACE_ID_RE.match(trace_id), f"trace_id {trace_id!r} not 32-hex"
+
+
+def test_submit_extracts_trace_id_from_traceparent_header(app_ctx) -> None:
+    """A valid W3C traceparent header threads its trace_id through the
+    response — the upstream caller's trace context is preserved."""
+    upstream_trace = "4bf92f3577b34da6a3ce929d0e0e4736"
+    traceparent = f"00-{upstream_trace}-00f067aa0ba902b7-01"
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory"},
+        headers={"traceparent": traceparent},
+    )
+    assert r.status_code == 200
+    assert r.json()["trace_id"] == upstream_trace
+
+
+def test_submit_with_malformed_traceparent_generates_fresh_trace(app_ctx) -> None:
+    """Garbage traceparent → fall back to a fresh trace_id rather than 4xx.
+    Header isn't a contract field, so we degrade gracefully."""
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory"},
+        headers={"traceparent": "not-a-traceparent"},
+    )
+    assert r.status_code == 200
+    trace_id = r.json()["trace_id"]
+    assert _TRACE_ID_RE.match(trace_id)
+
+
+def test_submit_writes_trace_label_on_issue(app_ctx) -> None:
+    """The trace_id is encoded as a ``trace:<32hex>`` label on the Issue so
+    every event in the orchestrator's stream can be correlated back."""
+    upstream_trace = "4bf92f3577b34da6a3ce929d0e0e4736"
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory"},
+        headers={"traceparent": f"00-{upstream_trace}-00f067aa0ba902b7-01"},
+    )
+    task_id = r.json()["task_id"]
+    issue = next(i for i in app_ctx["tracker"].all() if i.id == task_id)
+    assert f"trace:{upstream_trace}" in issue.labels
+
+
+def test_uppercase_traceparent_is_normalised_to_lowercase(app_ctx) -> None:
+    """W3C spec allows uppercase hex; we lower-case for stable correlation
+    keys (matching common observability stacks like Tempo / Honeycomb)."""
+    upper = "4BF92F3577B34DA6A3CE929D0E0E4736"
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory"},
+        headers={"traceparent": f"00-{upper}-00F067AA0BA902B7-01"},
+    )
+    assert r.status_code == 200
+    assert r.json()["trace_id"] == upper.lower()
+
+
+def test_idempotency_replay_returns_original_trace_id(app_ctx) -> None:
+    """A retried submit (same idempotency_key) returns the trace_id of the
+    *original* task, not a fresh one — so the caller's log correlation
+    keeps pointing at the same task across retries."""
+    upstream_trace = "4bf92f3577b34da6a3ce929d0e0e4736"
+    r1 = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory", "idempotency_key": "trace-replay"},
+        headers={"traceparent": f"00-{upstream_trace}-00f067aa0ba902b7-01"},
+    )
+    assert r1.status_code == 200
+    assert r1.json()["trace_id"] == upstream_trace
+
+    # Retry with a *different* upstream trace — idempotency must still bind
+    # the response to the *original* task's trace_id, not the new request's.
+    different = "11111111111111111111111111111111"
+    r2 = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory", "idempotency_key": "trace-replay"},
+        headers={"traceparent": f"00-{different}-00f067aa0ba902b7-01"},
+    )
+    assert r2.status_code == 200
+    assert r2.json()["task_id"] == r1.json()["task_id"]
+    assert r2.json()["trace_id"] == upstream_trace
