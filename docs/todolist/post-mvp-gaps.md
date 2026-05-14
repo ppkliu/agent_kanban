@@ -8,7 +8,7 @@
 
 | Severity | 數量 |
 |----------|------|
-| **High** | 2 |
+| **High** | 1 |
 | Medium   | 3 |
 | Low      | 3 |
 
@@ -29,17 +29,21 @@
   - Docker 模式 Phase 2 (見下方 Medium):雙容器把 opencode 抽出去後,
     爆炸半徑會縮小到 workspace volume
   - 進階升級路徑:firecracker / gVisor / rootless Docker
-- [ ] **Prompt injection 防護** (設計完成,實作待動工)
-  - **Stage 1 (分析,已完成):**
+- [x] **Prompt injection 防護 — Phase 1 完成**
+  - **Stage 1 (分析):**
     [`docs/design/prompt-injection-defense.md`](../design/prompt-injection-defense.md)
-    列了 5 種防護選項 (system-message hardening / template framing /
-    token-level isolation / tool sanitisation / LLM-judge) 並推薦
-    **(A) + (B) 雙層** 作為 MVP Phase 1 — 在 `workflow.render_prompt`
-    內強制套 `<<<ISSUE_DATA_BEGIN/END>>>` framing,WORKFLOW.md 範例
-    再加 system-message preamble。Phase 2 留給 token-level isolation
-    (per-runner 客製),Phase C governance 才考慮 LLM-judge
-  - **Stage 2 (實作,待開):** ~50 LOC 加進 `workflow.py` +
-    4 個 unit tests + 範例 WORKFLOW.md 更新
+    比較 5 種防護方案並推薦 (A) system-message preamble + (B) template
+    framing 雙層作為 MVP Phase 1
+  - **Stage 2 (實作,已落地):** `symphony_mvp/workflow.py` 新增
+    `_FRAMING_PREAMBLE` (system message) + `_wrap_untrusted_fields()`
+    (在 Jinja2 render 前把 `issue.title` / `issue.description` /
+    `hint.content` 包進 `<<<ISSUE_DATA_BEGIN/END>>>` 與
+    `<<<OPERATOR_HINT_BEGIN/END>>>` 邊界) + `_escape_boundary_tokens()`
+    (defang 攻擊者塞的偽造邊界 token);6 個 unit tests 涵蓋 preamble、
+    boundary 包裝、hint 包裝、攻擊 forge boundary 不會逃逸、helper 不
+    mutate 入參、既有 substring assertions 兼容
+  - Phase 2 (token-level isolation per-runner) 與 Phase C (LLM-judge /
+    tool sanitisation) 留作後續
 
 ## Medium — MVP 可上線但長期會痛
 
