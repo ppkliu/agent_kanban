@@ -11,6 +11,7 @@ keys, multi-repo pool — they're tracked as Phase B / C in
 """
 from __future__ import annotations
 
+import re
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
@@ -129,6 +130,14 @@ class SubmitTaskIn(BaseModel):
 class SubmitTaskOut(BaseModel):
     task_id: str
     status: Literal["pending"] = "pending"
+    trace_id: str = Field(
+        description=(
+            "32-hex W3C trace_id bound to this task. Echoed back so upstream "
+            "agents can correlate logs across processes. Extracted from the "
+            "caller's 'traceparent' HTTP header (W3C TraceContext) when "
+            "present; otherwise a fresh trace_id is generated."
+        ),
+    )
 
 
 class CheckStatusIn(BaseModel):
@@ -219,6 +228,31 @@ _DONE_REASONS = {
     TerminalReason.TRACKER_TERMINAL,
 }
 
+# W3C TraceContext: ``00-<32hex trace_id>-<16hex parent_id>-<2hex flags>``.
+# Symphony doesn't emit spans yet, so only the trace_id portion is load-bearing.
+_TRACEPARENT_RE = re.compile(
+    r"^[0-9a-f]{2}-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$",
+    re.IGNORECASE,
+)
+_TRACE_LABEL_PREFIX = "trace:"
+
+
+def _parse_or_generate_trace_id(traceparent: str | None) -> str:
+    """Extract the trace_id from a W3C ``traceparent`` header, or mint a
+    fresh 32-hex id if the header is missing or malformed."""
+    if traceparent:
+        m = _TRACEPARENT_RE.match(traceparent.strip())
+        if m:
+            return m.group(1).lower()
+    return secrets.token_hex(16)
+
+
+def _extract_trace_id_from_labels(labels: list[str]) -> str | None:
+    for label in labels:
+        if label.startswith(_TRACE_LABEL_PREFIX):
+            return label[len(_TRACE_LABEL_PREFIX):]
+    return None
+
 
 def _state(request: Request) -> "DashboardAppState":
     return request.app.state.symphony
@@ -284,18 +318,19 @@ def _build_summary_phase_a(history_row: dict[str, Any]) -> str:
     return " ".join(parts)
 
 
-def _make_task_issue(body: SubmitTaskIn) -> Issue:
+def _make_task_issue(body: SubmitTaskIn, trace_id: str) -> Issue:
     """Generate an Issue ingestible by InMemoryTracker.add().
 
-    Encodes the requested ``mode`` (if any) as a ``mode:<value>`` label so
-    the orchestrator can read it off ``issue.labels`` at dispatch time and
-    pass the matching ``allowed_tools`` whitelist to ``runner.run()``.
+    Encodes the requested ``mode`` (if any) as a ``mode:<value>`` label and
+    the W3C ``trace_id`` as a ``trace:<32hex>`` label so the orchestrator
+    can read both off ``issue.labels`` at dispatch time without threading
+    extra positional args through the runner chain.
     """
     task_id = f"tsk_{secrets.token_hex(8)}"
     description = body.task
     if body.files_hint:
         description = f"{body.task}\n\nFocus on: {', '.join(body.files_hint)}"
-    labels = ["tool-api"]
+    labels = ["tool-api", f"{_TRACE_LABEL_PREFIX}{trace_id}"]
     if body.mode is not None:
         labels.append(f"{MODE_LABEL_PREFIX}{body.mode}")
     now = datetime.now(timezone.utc)
@@ -441,11 +476,25 @@ def post_submit_coding_task(
     # Idempotency short-circuit: if the caller sent a key we've seen before
     # within TTL, return the original task_id instead of creating a duplicate.
     # Runs BEFORE the rate limit check — replaying a client retry shouldn't
-    # cost the caller their quota.
+    # cost the caller their quota. The trace_id returned is the one the
+    # *original* task was created with, so the caller's log correlation
+    # continues to point at the same task across retries.
     if body.idempotency_key and hasattr(state.bridge, "lookup_idempotency_key"):
         prior = state.bridge.lookup_idempotency_key(body.idempotency_key)
         if prior is not None:
-            return SubmitTaskOut(task_id=prior)
+            prior_trace: str | None = None
+            tracker_obj = state.orch.tracker
+            if hasattr(tracker_obj, "all"):
+                for issue in tracker_obj.all():
+                    if issue.id == prior:
+                        prior_trace = _extract_trace_id_from_labels(issue.labels)
+                        break
+            return SubmitTaskOut(
+                task_id=prior,
+                trace_id=prior_trace or secrets.token_hex(16),
+            )
+
+    trace_id = _parse_or_generate_trace_id(request.headers.get("traceparent"))
 
     # Global rate limit (Phase C quota). Unset / 0 = unlimited.
     cap = _submit_rate_limit_per_minute()
@@ -466,7 +515,7 @@ def post_submit_coding_task(
                 headers={"Retry-After": str(window_seconds)},
             )
 
-    issue = _make_task_issue(body)
+    issue = _make_task_issue(body, trace_id=trace_id)
     tracker = state.orch.tracker
     if not hasattr(tracker, "add"):  # pragma: no cover — defence in depth
         raise HTTPException(
@@ -484,7 +533,7 @@ def post_submit_coding_task(
     if hasattr(state.bridge, "record_submit"):
         state.bridge.record_submit(issue.id)
 
-    return SubmitTaskOut(task_id=issue.id)
+    return SubmitTaskOut(task_id=issue.id, trace_id=trace_id)
 
 
 @tool_router.post(
