@@ -111,7 +111,13 @@
     `symphony_events_total` / `symphony_events_by_kind_total{kind=}` / `symphony_hints_*` /
     `symphony_priority_overrides` / `symphony_attempts_state_rows` / `symphony_idempotency_keys`),
     純標準函式庫,沒新依賴;`/metrics` 故意不檢查 auth (Prometheus scrape convention)
-  - ⏳ OpenTelemetry tracing (span propagation / W3C TraceContext) 留作後續
+  - ✅ W3C TraceContext trace_id 傳遞 (本批 commits):`submit_coding_task`
+    讀 `traceparent` HTTP header,抽出 32-hex trace_id 寫成 `trace:<id>`
+    issue label,response 回傳給上游 caller;沒帶 header 就現生 fresh id;
+    idempotency replay 回原 task 的 trace_id,跨重試維持 log correlation;
+    純標準函式庫 (`re` + `secrets`),沒新依賴
+  - ⏳ OpenTelemetry span emission / context propagation 到 runner 子行程
+    留作後續 (現在的 trace_id 已足以做 log correlation,但 span tree 還沒)
 - [x] **Permission policy 比 Codex 簡化** — 跨 runner allow-list hook 已落地
   - Phase B 的 per-task `mode` (`dashboard/mode.py` + AgentRunner Protocol
     的 `allowed_tools` kwarg) 就是這條 gap 要的東西:Tool API 用
