@@ -1,7 +1,7 @@
 # Symphony MVP — 完成度狀態
 
 > English: [MVP-STATUS.md](MVP-STATUS.md)
-> 審核日期:**2026-05-13** · 測試:**199 個全綠** (滾動式 — 每次影響 MVP 的 commit 後重貼)
+> 審核日期:**2026-05-14** · 測試:**205 個全綠** (滾動式 — 每次影響 MVP 的 commit 後重貼)
 
 30 秒內回答「Symphony 的 MVP 框架做完了嗎?」想看深入文件就讀
 [使用說明書](guide/user-manual.zh-TW.md)、[`/api/v1/*` API reference](API-REFERENCE.zh-TW.md);
@@ -36,11 +36,12 @@ MVP 框架的契約:**對上游 agent 暴露 6 個語意化 tool、opt-in dashbo
 | Phase C quota — env 配置的每分鐘 submit rate limit;超過回 429 + `Retry-After` | ✅ | 本批 commits | `pytest tests/test_tool_api.py -k rate_limit` |
 | Linear adapter — 第二個 production tracker (GraphQL),驗證抽象層可換 | ✅ | 本批 commits | `pytest tests/test_linear_tracker.py` |
 | Prompt-injection 防護 Phase 1 — 自動 system-message preamble + 把 untrusted issue/hint 欄位包進 `<<<…BEGIN/END>>>` framing | ✅ | 本批 commits | `pytest tests/test_workflow.py -k framing` |
+| W3C TraceContext trace_id 傳遞 — `traceparent` header → `trace:<id>` issue label → response `trace_id` 欄位,讓跨行程 log correlation 可行 | ✅ | 本批 commits | `pytest tests/test_tool_api.py -k trace` |
 | Emergency Stop All (operator 緊急停止) | ✅ | `1c2a45a` `2448f65` | 瀏覽器 TopBar 紅色按鈕,或 `POST /api/v1/emergency_stop` |
 | 四種可替換 runner (echo / opencode / anthropic_api / claude_cli) | ✅ | `3b81799` `2ff85ba` | 改 `WORKFLOW.md` 的 `runner.kind` 重啟 |
 | 雙語使用說明書 + Tool API client demo | ✅ | `2fa23f1` `09dbd8c` `3754e0d` | 開 [user-manual.zh-TW.md](guide/user-manual.zh-TW.md) |
 | 5 欄 Kanban + 6 tab Issue Drawer | ✅ | `2c9ef2f` 之前 | 開 `http://localhost:17957` |
-| 自含測試套件 (不需 LLM / 不需 GitHub) | ✅ | 199 tests | `.venv/bin/python -m pytest` |
+| 自含測試套件 (不需 LLM / 不需 GitHub) | ✅ | 205 tests | `.venv/bin/python -m pytest` |
 | REST + WebSocket Bearer 認證 | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
 **結論**:README 跟使用說明書裡的每個行為承諾,**都有 code 或 test 撐住**
@@ -73,7 +74,7 @@ MVP 框架的契約:**對上游 agent 暴露 6 個語意化 tool、opt-in dashbo
 # 1. Clone + 跑測試 (不需 LLM、不需 Docker)
 git clone <this-repo> && cd agent_kanban
 uv venv && uv pip install -e ".[dev,dashboard]"
-.venv/bin/python -m pytest                  # 預期:199 passed
+.venv/bin/python -m pytest                  # 預期:205 passed
 
 # 2. 拉起整套框架
 cp examples/WORKFLOW.docker.md WORKFLOW.md
@@ -96,9 +97,9 @@ open http://localhost:17957
 
 | | |
 |---|---|
-| 審核日期 | **2026-05-13** |
+| 審核日期 | **2026-05-14** |
 | Commit | 滾動式 — 最新 checkpoint 看 `git log` |
-| 測試通過數 | **199** (`pytest -q`) |
+| 測試通過數 | **205** (`pytest -q`) |
 | 前端測試 | **45** (`npm test`) |
 | Docker image | `symphony-dashboard:dev` (Phase 1 單容器) |
 | Tool API 上線端點 | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task` |
