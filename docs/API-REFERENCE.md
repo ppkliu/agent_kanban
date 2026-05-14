@@ -55,7 +55,7 @@ curl -X POST http://localhost:17957/api/v1/tools/submit_coding_task \
     "files_hint": ["src/routes/"],
     "idempotency_key": "client-abc"
   }'
-# → {"task_id": "tsk_e3f1...", "status": "pending"}
+# → {"task_id": "tsk_e3f1...", "status": "pending", "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"}
 
 # 3. Poll status
 curl -X POST http://localhost:17957/api/v1/tools/check_task_status \
@@ -80,6 +80,12 @@ For a runnable end-to-end demo using only the stdlib see
   `SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE=N` on the server to cap submits.
   Excess submits return **`429 Too Many Requests`** with `Retry-After: 60`.
   Idempotency replays bypass the limit (short-circuit fires first).
+- **`trace_id`** (response, always present): 32-hex W3C trace_id bound to
+  the task. If the caller sends a W3C `traceparent` HTTP header
+  (`00-<32hex>-<16hex>-<2hex>`), Symphony extracts the trace_id portion
+  and echoes it back; otherwise a fresh id is generated. Idempotency
+  replays return the original task's trace_id so log correlation keeps
+  pointing at the same task across retries.
 - **`status`** (in `check_task_status`): `pending` / `running` / `done` /
   `failed` / `cancelled`.
 - **`stage`** (in `check_task_status`): `queued` / `exploring_codebase` /

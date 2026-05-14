@@ -53,7 +53,7 @@ curl -X POST http://localhost:17957/api/v1/tools/submit_coding_task \
     "files_hint": ["src/routes/"],
     "idempotency_key": "client-abc"
   }'
-# → {"task_id": "tsk_e3f1...", "status": "pending"}
+# → {"task_id": "tsk_e3f1...", "status": "pending", "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"}
 
 # 3. 輪詢狀態
 curl -X POST http://localhost:17957/api/v1/tools/check_task_status \
@@ -77,6 +77,11 @@ curl -X POST http://localhost:17957/api/v1/tools/get_task_result \
   `SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE=N` 限制 submit 數。超過會回
   **`429 Too Many Requests`** 加 `Retry-After: 60`。Idempotency replay
   不算 (short-circuit 先發生)。
+- **`trace_id`** (response,一定有):跟這個 task 綁定的 32-hex W3C
+  trace_id。若 caller 帶 W3C `traceparent` HTTP header
+  (`00-<32hex>-<16hex>-<2hex>`),Symphony 從中抽出 trace_id 部分原樣回傳;
+  沒帶就現生一個。Idempotency replay 回原 task 的 trace_id,讓 log
+  correlation 在重試之間維持指向同一個 task。
 - **`status`** (in `check_task_status`):`pending` / `running` / `done` /
   `failed` / `cancelled`。
 - **`stage`** (in `check_task_status`):`queued` / `exploring_codebase` /
