@@ -2,7 +2,7 @@
 
 > [English README →](../README.md)
 
-> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**193 個單元測試全綠**(MVP 核心 29 + Dashboard 56 + Runner 11 + Tool API 26 + Phase B helpers 30 + mode 11 + metrics 8 + Linear 22),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
+> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**199 個單元測試全綠**(MVP 核心 29 + 提示注入防護 6 + Dashboard 56 + Runner 11 + Tool API 26 + Phase B helpers 30 + mode 11 + metrics 8 + Linear 22),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
 
 ## 架構總覽
 
@@ -88,7 +88,7 @@
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 193 = MVP 29 + Dashboard 56 + Runner 11 + Tool API 26 + Phase B helpers 30 + mode 11 + metrics 8 + Linear 22
+# 199 = MVP 29 + 提示注入 6 + Dashboard 56 + Runner 11 + Tool API 26 + Phase B helpers 30 + mode 11 + metrics 8 + Linear 22
 .venv/bin/python -m pytest
 
 # 純記憶體 demo,無外部依賴
@@ -322,14 +322,15 @@ orch.add_event_listener(my_listener)
 
 從 README 抽出來的「未完成項目」(workspace 沙箱、prompt injection 防護、
 雙容器爆炸半徑切分、tracing、多人 RBAC 等) 都搬到一份獨立
-文件:**[docs/todolist/post-mvp-gaps.md](todolist/post-mvp-gaps.md)** (目前 2
+文件:**[docs/todolist/post-mvp-gaps.md](todolist/post-mvp-gaps.md)** (目前 1
 高 / 3 中 / 3 低)。已落地:Docker scaffolding (Phase 1 單容器)、Coding
 Service Tool API (Phase A + Phase B 含 per-task mode 硬性 whitelist +
 Phase C idempotency)、持久化 retry queue、雙語反向代理 / TLS 部署章節、
 GH Actions 三 job CI smoke test、中英雙語 `/api/v1/*` API reference、
 Prometheus `/metrics` 暴露 (9 個零依賴 counter/gauge)、Phase C quota
 (每分鐘 submit rate limit,超過回 429 + `Retry-After`)、Linear GraphQL
-tracker adapter。
+tracker adapter、Phase 1 提示注入防護 (自動 system-message preamble +
+`<<<…BEGIN/END>>>` 包裝 untrusted issue / hint 欄位)。
 
 ## 檔案結構
 
@@ -392,9 +393,9 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 193 tests
+├── tests/                     # 199 tests
 │   ├── conftest.py
-│   ├── test_workflow.py       # 7 tests
+│   ├── test_workflow.py       # 13 tests (7 + 6 prompt-injection framing)
 │   ├── test_workspace.py      # 8 tests
 │   ├── test_agent_runner.py   # 18 tests (15 + 3 allowed_tools override)
 │   ├── test_orchestrator.py   # 7 tests
@@ -420,7 +421,7 @@ agent_kanban/
 
 ```bash
 $ .venv/bin/python -m pytest
-======================== 193 passed in 9.11s =========================
+======================== 199 passed in 10.51s ========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (正常完成,3 個 workspace 都建立並寫入 marker 檔)

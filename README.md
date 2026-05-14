@@ -11,8 +11,8 @@
 > container for code generation). The default tracker is the project's own
 > SQLite-backed kanban — there is no required cloud or SaaS dependency. Local
 > LLMs are the primary runtime target; Claude Code CLI, Anthropic API, and
-> Codex are documented secondary backends. Pure Python 3.10+, **193 unit tests
-> green** (29 MVP core + 56 dashboard + 11 runner + 26 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 8 metrics + 22 Linear adapter + 1 ClaudeCLI override), spec-aligned React
+> Codex are documented secondary backends. Pure Python 3.10+, **199 unit tests
+> green** (29 MVP core + 6 prompt-injection framing + 56 dashboard + 11 runner + 26 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 8 metrics + 22 Linear adapter + 1 ClaudeCLI override), spec-aligned React
 > observatory, all four pluggable runners selectable from a single line of
 > `WORKFLOW.md`.
 
@@ -102,7 +102,7 @@ For development / CI without Docker:
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 193 tests = 29 MVP core + 56 dashboard + 11 runner + 26 tool API + 30 phase B helpers + 11 mode/override + 8 metrics + 22 Linear
+# 199 tests = 29 MVP core + 6 prompt-injection + 56 dashboard + 11 runner + 26 tool API + 30 phase B helpers + 11 mode/override + 8 metrics + 22 Linear
 .venv/bin/python -m pytest
 
 # self-contained end-to-end demo (no external API)
@@ -372,15 +372,17 @@ orch.add_event_listener(my_listener)
 The honest list of what's still missing — workspace sandboxing,
 prompt-injection defence, two-container blast-radius split, tracing,
 multi-user RBAC, and a few smaller items — has its own file:
-**[docs/todolist/post-mvp-gaps.md](docs/todolist/post-mvp-gaps.md)** (2 High,
+**[docs/todolist/post-mvp-gaps.md](docs/todolist/post-mvp-gaps.md)** (1 High,
 3 Medium, 3 Low items at last count). Shipped so far: Docker scaffolding
 (Phase 1, single-container), Coding Service Tool API (Phase A + B including
 per-task mode hard whitelist + Phase C idempotency), persistent retry queue,
 bilingual reverse-proxy / TLS deployment chapter, 3-job GH Actions CI smoke
 test, a curated bilingual `/api/v1/*` API reference, Prometheus
 `/metrics` exposition (9 zero-dependency counters), Phase C quota
-(per-minute submit rate limit with 429 + `Retry-After`), and a Linear
-GraphQL tracker adapter.
+(per-minute submit rate limit with 429 + `Retry-After`), a Linear
+GraphQL tracker adapter, and Phase 1 prompt-injection defence
+(automatic system-message preamble + `<<<…BEGIN/END>>>` framing around
+untrusted issue / hint fields).
 
 ## Layout
 
@@ -443,9 +445,9 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 193 tests
+├── tests/                     # 199 tests
 │   ├── conftest.py
-│   ├── test_workflow.py                # 7
+│   ├── test_workflow.py                # 13  (7 + 6 prompt-injection framing)
 │   ├── test_workspace.py               # 8
 │   ├── test_agent_runner.py            # 18  (15 + 3 allowed_tools override)
 │   ├── test_orchestrator.py            # 7
@@ -470,7 +472,7 @@ agent_kanban/
 ## Run log
 ```bash
 $ .venv/bin/python -m pytest
-======================== 193 passed in 9.11s =========================
+======================== 199 passed in 10.51s ========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (3 workspaces created, marker files written)
