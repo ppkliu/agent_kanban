@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { api, setApiKey } from "../api/client";
 import { applyTheme, getStoredTheme, toggleTheme, type Theme } from "../theme";
+import AgentExplainer from "./AgentExplainer";
 
 export default function TopBar() {
   const status = useStore((s) => s.status);
@@ -13,6 +14,7 @@ export default function TopBar() {
 
   const [editingMax, setEditingMax] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
+  const [explainerOpen, setExplainerOpen] = useState(false);
 
   // Keep <html data-theme="…"> in sync if `theme` is changed via the switcher.
   useEffect(() => {
@@ -46,11 +48,27 @@ export default function TopBar() {
             <span className="text-zinc-500"> · {cfg.tracker_repo}</span>
           ) : null}
         </span>
-        <span>
+        <span className="relative inline-flex items-center gap-1">
           runner:{" "}
           <span className="text-zinc-200">
             {cfg?.runner_kind ?? "—"} · {cfg?.runner_model ?? ""}
           </span>
+          <button
+            onClick={() => setExplainerOpen((v) => !v)}
+            className="ml-1 w-4 h-4 rounded-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[10px] leading-3 text-zinc-300"
+            title="What's this runner?"
+            aria-label="Open agent system explainer"
+            aria-expanded={explainerOpen}
+          >
+            ?
+          </button>
+          {explainerOpen ? (
+            <AgentExplainer
+              runnerKind={cfg?.runner_kind}
+              runnerModel={cfg?.runner_model}
+              onClose={() => setExplainerOpen(false)}
+            />
+          ) : null}
         </span>
         <span>tick: {cfg?.polling_interval_ms ?? "—"}ms</span>
       </div>
