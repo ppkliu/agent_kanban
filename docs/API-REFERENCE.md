@@ -100,6 +100,16 @@ For a runnable end-to-end demo using only the stdlib see
   graph) or `status` (scan failed-only / running-only). `limit` caps
   the response (default 100, max 500). Read-only — does not spawn an
   agent.
+- **`subtasks`** (D2a Path A): pass a list of `SubTaskSpec` and the call
+  creates **one parent + N children** in one go (cap: 50 subtasks).
+  Each spec carries `task`, optional `depends_on` (sibling indices —
+  forward-only references; the server rewrites them to real task_ids),
+  optional `mode`, and optional `files_hint`. A single `idempotency_key`
+  covers the whole batch — replays return the original parent id with
+  no duplicate children. All issues share one `trace_id` so log
+  correlation across the subgraph is preserved. Path B (Symphony-driven
+  decomposition via plan-mode runner) is on the roadmap (D2b) but not
+  yet shipped — for now, the upstream LLM does the decomposition.
 - **`status`** (in `check_task_status`): `pending` / `running` / `done` /
   `failed` / `cancelled`.
 - **`stage`** (in `check_task_status`): `queued` / `exploring_codebase` /

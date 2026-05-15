@@ -87,8 +87,17 @@
     USER_INPUT_REQUIRED 結束,所有 pending child 都凍結;新 endpoint
     `/api/v1/tools/list_tasks` 給上游 agent 走 child graph + 按 status 篩。
     自含 7 個新 test (2 orchestrator + 5 tool_api)
-  - **D2 (待開)** — Decomposition 雙路徑入口:`subtasks=[...]` 直接收 caller
-    切好的子任務 list,或 `decompose=true` 跑一次 plan-mode runner 自動拆解
+  - **D2a (本批 commits,已落地)** — Decomposition Path A:`SubmitTaskIn`
+    新增 `subtasks: list[SubTaskSpec]` 欄位,handler 同時建 1 parent + N child
+    (cap 50);sibling depends_on 用 forward-only sibling index 表達,server
+    在 ingestion 時 rewrite 成真正的 task_id;整批共用 1 個 idempotency_key
+    跟 1 個 trace_id。6 個新 test 覆蓋 parent+children linkage / sibling
+    dep translation / trace_id inheritance / idempotency replay / invalid
+    forward-ref / per-child mode label
+  - **D2b (待開)** — Decomposition Path B (`decompose=true`):caller 只給
+    一個 high-level goal,Symphony 自己跑一次 plan-mode runner 拆成
+    subtasks。需要 orchestrator 加 post-terminal hook (parent 跑完才能
+    parse output 建 child),所以從 D2 拆出來單獨做
   - **D3 (待開)** — Human-intervention escalation:新 `TerminalReason.NEEDS_HUMAN`
     + runner 解析 `[HUMAN_REQUIRED]` marker + `resolve_human_block` endpoint
   - **D4 (待開)** — Periodic CHECKPOINT events 給 mid-flight 進度回報

@@ -95,6 +95,15 @@ curl -X POST http://localhost:17957/api/v1/tools/get_task_result \
   升冪排序。用 `parent_task_id` 走 child graph、用 `status` 篩 (例如
   只看失敗或執行中)、`limit` 控制最多回幾筆 (預設 100,上限 500)。
   只讀,不會起 agent。
+- **`subtasks`** (D2a Path A):一次 call 帶一 list 的 `SubTaskSpec`,
+  Symphony 同時建立 **1 個 parent + N 個 child** issue (上限 50 個
+  subtask)。每個 spec 帶 `task`、選填 `depends_on` (sibling 的 index,
+  只能 forward reference;server 會 rewrite 成真正的 task_id)、選填
+  `mode`、選填 `files_hint`。整批共用一個 `idempotency_key`,replay
+  回原 parent id,不會重複建 child。整個子圖共用一個 `trace_id`,跨
+  task 的 log correlation 維持指向同一個 trace。Path B (Symphony 自己
+  跑 plan-mode runner 拆解) 仍在 roadmap (D2b),目前還沒上;暫時請
+  上游 LLM 自己做拆解。
 - **`status`** (in `check_task_status`):`pending` / `running` / `done` /
   `failed` / `cancelled`。
 - **`stage`** (in `check_task_status`):`queued` / `exploring_codebase` /
