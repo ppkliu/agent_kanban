@@ -125,6 +125,27 @@ class SubmitTaskIn(BaseModel):
             "Critical for upstream LLM retries on network blips."
         ),
     )
+    parent_task_id: Optional[str] = Field(
+        default=None,
+        max_length=128,
+        description=(
+            "If set, the new task is a child of this parent task_id. Encoded "
+            "as a 'parent:<id>' label on the Issue so the orchestrator can "
+            "gate dispatch when the parent ends in a non-success terminal "
+            "state. Use this to model graph-shaped workflows where a high-"
+            "level goal fans out into a tree of subtasks."
+        ),
+    )
+    depends_on: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Optional list of sibling task_ids that must reach a terminal "
+            "state before this task is dispatched. Maps directly to "
+            "Issue.blocked_by and is consumed by the existing dispatch gate. "
+            "Use this to express dependency order between subtasks under a "
+            "shared parent."
+        ),
+    )
 
 
 class SubmitTaskOut(BaseModel):
@@ -196,6 +217,45 @@ class CancelTaskOut(BaseModel):
     task_id: str
 
 
+class ListTasksIn(BaseModel):
+    parent_task_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "If set, only return tasks whose 'parent:<id>' label matches. "
+            "Pass the parent's task_id to enumerate its direct children "
+            "(siblings of one parent). Unset = return every Tool API task."
+        ),
+    )
+    status: Optional[TaskStatus] = Field(
+        default=None,
+        description=(
+            "If set, only return tasks whose derived status matches. Useful "
+            "for an upstream agent that wants to scan 'what's still running' "
+            "or 'what failed' without polling each task_id individually."
+        ),
+    )
+    limit: int = Field(
+        default=100,
+        ge=1,
+        le=500,
+        description="Cap on number of tasks returned. Default 100, max 500.",
+    )
+
+
+class TaskSummaryOut(BaseModel):
+    task_id: str
+    title: str
+    status: TaskStatus
+    parent_task_id: Optional[str] = None
+    depends_on: list[str] = Field(default_factory=list)
+    mode: Optional[Literal["plan", "build", "review"]] = None
+    created_at: datetime
+
+
+class ListTasksOut(BaseModel):
+    tasks: list[TaskSummaryOut]
+
+
 class InspectRepoIn(BaseModel):
     repo: str = Field(description="Repo id returned by list_repos")
 
@@ -235,6 +295,7 @@ _TRACEPARENT_RE = re.compile(
     re.IGNORECASE,
 )
 _TRACE_LABEL_PREFIX = "trace:"
+_PARENT_LABEL_PREFIX = "parent:"
 
 
 def _parse_or_generate_trace_id(traceparent: str | None) -> str:
@@ -251,6 +312,13 @@ def _extract_trace_id_from_labels(labels: list[str]) -> str | None:
     for label in labels:
         if label.startswith(_TRACE_LABEL_PREFIX):
             return label[len(_TRACE_LABEL_PREFIX):]
+    return None
+
+
+def _extract_parent_id_from_labels(labels: list[str]) -> str | None:
+    for label in labels:
+        if label.startswith(_PARENT_LABEL_PREFIX):
+            return label[len(_PARENT_LABEL_PREFIX):]
     return None
 
 
@@ -321,10 +389,13 @@ def _build_summary_phase_a(history_row: dict[str, Any]) -> str:
 def _make_task_issue(body: SubmitTaskIn, trace_id: str) -> Issue:
     """Generate an Issue ingestible by InMemoryTracker.add().
 
-    Encodes the requested ``mode`` (if any) as a ``mode:<value>`` label and
-    the W3C ``trace_id`` as a ``trace:<32hex>`` label so the orchestrator
-    can read both off ``issue.labels`` at dispatch time without threading
-    extra positional args through the runner chain.
+    Encodes the requested ``mode`` (if any) as a ``mode:<value>`` label,
+    the W3C ``trace_id`` as a ``trace:<32hex>`` label, and (if set) the
+    ``parent_task_id`` as a ``parent:<id>`` label so the orchestrator can
+    read all three off ``issue.labels`` at dispatch time without threading
+    extra positional args through the runner chain. ``depends_on`` maps
+    straight to ``Issue.blocked_by`` so the existing dispatch gate handles
+    dependency ordering with no orchestrator changes.
     """
     task_id = f"tsk_{secrets.token_hex(8)}"
     description = body.task
@@ -333,6 +404,9 @@ def _make_task_issue(body: SubmitTaskIn, trace_id: str) -> Issue:
     labels = ["tool-api", f"{_TRACE_LABEL_PREFIX}{trace_id}"]
     if body.mode is not None:
         labels.append(f"{MODE_LABEL_PREFIX}{body.mode}")
+    if body.parent_task_id:
+        labels.append(f"{_PARENT_LABEL_PREFIX}{body.parent_task_id}")
+    blocked_by = list(body.depends_on) if body.depends_on else []
     now = datetime.now(timezone.utc)
     return Issue(
         id=task_id,
@@ -344,7 +418,7 @@ def _make_task_issue(body: SubmitTaskIn, trace_id: str) -> Issue:
         branch_name=None,
         url=f"opencode-tool-api://{task_id}",
         labels=labels,
-        blocked_by=[],
+        blocked_by=blocked_by,
         created_at=now,
         updated_at=now,
     )
@@ -682,3 +756,58 @@ def post_cancel_task(
         body.task_id, message=body.reason or "operator cancelled via tool api"
     )
     return CancelTaskOut(ok=True, was_running=was_running, task_id=body.task_id)
+
+
+@tool_router.post(
+    "/list_tasks",
+    response_model=ListTasksOut,
+    summary="Enumerate Tool API tasks with optional parent + status filter",
+    description=(
+        "Returns a flat list of Tool API tasks (those carrying the "
+        "`tool-api` label) sorted by created_at ascending. Useful for an "
+        "upstream agent to walk a parent's child graph (`parent_task_id`), "
+        "scan only-failed tasks (`status=failed`), or page through recent "
+        "submissions. This is a read-only endpoint and does not spawn an "
+        "agent or mutate state."
+    ),
+)
+def post_list_tasks(body: ListTasksIn, request: Request) -> ListTasksOut:
+    state = _state(request)
+    tracker = state.orch.tracker
+    if not hasattr(tracker, "all"):  # pragma: no cover — defence in depth
+        return ListTasksOut(tasks=[])
+
+    summaries: list[TaskSummaryOut] = []
+    parent_filter = body.parent_task_id
+    status_filter = body.status
+    mode_prefix = MODE_LABEL_PREFIX
+
+    for issue in tracker.all():
+        if "tool-api" not in issue.labels:
+            continue
+        issue_parent = _extract_parent_id_from_labels(issue.labels)
+        if parent_filter is not None and issue_parent != parent_filter:
+            continue
+        att = state.orch._attempts.get(issue.id)  # noqa: SLF001
+        derived_status, _ = _derive_status(att)
+        if status_filter is not None and derived_status != status_filter:
+            continue
+        issue_mode: Optional[str] = None
+        for label in issue.labels:
+            if label.startswith(mode_prefix):
+                issue_mode = label[len(mode_prefix):]
+                break
+        summaries.append(
+            TaskSummaryOut(
+                task_id=issue.id,
+                title=issue.title,
+                status=derived_status,
+                parent_task_id=issue_parent,
+                depends_on=list(issue.blocked_by),
+                mode=issue_mode,  # type: ignore[arg-type]
+                created_at=issue.created_at,
+            )
+        )
+
+    summaries.sort(key=lambda s: s.created_at)
+    return ListTasksOut(tasks=summaries[: body.limit])
