@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useStore } from "./store";
 import { loadStoredApiKey } from "./api/client";
+import { applyTheme, getStoredTheme } from "./theme";
 import TopBar from "./components/TopBar";
 import FilterBar from "./components/FilterBar";
 import KanbanBoard from "./components/KanbanBoard";
@@ -14,6 +15,7 @@ export default function App() {
   const workflowEditorOpen = useStore((s) => s.workflowEditorOpen);
 
   useEffect(() => {
+    applyTheme(getStoredTheme());
     loadStoredApiKey();
     init();
   }, [init]);
