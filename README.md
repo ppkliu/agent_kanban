@@ -82,21 +82,110 @@ Mapping to the SPEC's six layers:
 | Agent Runner | `agent_runner.py` |
 | Observability | `dashboard/` (FastAPI + WebSocket) + `Orchestrator.state_snapshot()` |
 
-## Quick start
+## Quick start — five-minute demo
 
-The supported deployment target is **Docker Compose** — one file brings up
-the dashboard plus a sandboxed `opencode` container that talks to a local
-LLM endpoint. Step-by-step instructions, configuration reference, and
-troubleshooting are in:
+Two tracks. Both start the same `docker compose up`; the only difference is
+which runner `WORKFLOW.md` selects.
+
+**Prerequisites**: Docker Engine 24+, `docker compose` v2, port 17957 free.
+Track B additionally needs an LLM endpoint (local Ollama / vLLM / LM Studio,
+or a cloud API key).
+
+### Track A — prove kanban motion (EchoRunner, zero LLM dependency)
+
+The fastest path. Card transitions Unclaimed → Claimed → Running → Released
+in under five seconds with no model dependency.
+
+```bash
+git clone <this-repo>
+cd agent_kanban
+
+# 1. Use the zero-LLM demo workflow (EchoRunner)
+cp examples/WORKFLOW.demo-echo.md WORKFLOW.md
+
+# 2. Boot the single-container stack
+docker compose up -d
+curl -fsS http://localhost:17957/healthz       # → {"ok": true}
+
+# 3. Open the kanban in a browser. You'll see five empty columns.
+#    macOS:   open http://localhost:17957
+#    Linux:   xdg-open http://localhost:17957
+#    Windows: start http://localhost:17957
+
+# 4. In another terminal, drive a task end-to-end via the Tool API.
+SYMPHONY_URL=http://localhost:17957 \
+  .venv/bin/python examples/tool_api_client.py
+#  (Symphony does not need .venv — the client just needs a stdlib Python.)
+```
+
+While step 4 runs, watch the new card flow across the kanban. The drawer
+(click the card) shows the agent's full event stream. EchoRunner declares
+done after one turn so the demo finishes in seconds.
+
+### Track B — real coding work via opencode + local LLM
+
+Same compose stack, but with the real `opencode` runner pointed at your LLM
+endpoint. Provide model + endpoint config via `.env`:
+
+```bash
+cd agent_kanban
+
+# 1. opencode workflow (the shipped default)
+cp examples/WORKFLOW.docker.md WORKFLOW.md
+
+# 2. Configure the LLM endpoint. Copy the shipped template and edit:
+cp .env.example .env
+cat >> .env <<'EOF'
+# Bearer token on the dashboard REST + WebSocket (recommended)
+DASHBOARD_API_KEY=$(openssl rand -hex 32)
+
+# LiteLLM provider id consumed by opencode.
+# Common: ollama / openai / anthropic / vllm / lm-studio / sglang
+OPENCODE_PROVIDER=ollama
+
+# Base URL of your LLM endpoint.
+# - Ollama default:  http://host.docker.internal:11434
+# - vLLM / SGLang:   http://host.docker.internal:8000
+# - LM Studio:       http://host.docker.internal:1234
+# - Cloud (Anthropic / OpenAI): leave at the LiteLLM default for that provider
+OPENCODE_BASE_URL=http://host.docker.internal:11434
+
+# Model name (must match what your endpoint actually serves)
+OPENCODE_MODEL=qwen2.5-coder:32b
+
+# API key. Required only for cloud providers (anthropic / openai). Leave
+# blank for local endpoints (Ollama / vLLM / LM Studio).
+OPENCODE_API_KEY=
+EOF
+
+# 3. Boot
+docker compose up -d
+curl -fsS http://localhost:17957/healthz
+
+# 4. Drive a task end-to-end
+SYMPHONY_URL=http://localhost:17957 \
+  DASHBOARD_API_KEY=$(grep ^DASHBOARD_API_KEY .env | cut -d= -f2) \
+  python examples/tool_api_client.py
+```
+
+The card now stays in **Running** for the full agent loop. Open the drawer
+to watch live `MESSAGE_DELTA` and `TOOL_CALL` events as opencode reads /
+edits / runs tests inside the per-issue workspace. When the agent finishes,
+the card lands in **Released** with a structured summary, files-changed
+list, and any blockers it raised.
+
+To swap models without rebuilding the container: edit `.env`, run
+`docker compose up -d` (it re-reads env), no image rebuild needed.
+
+### Where to read more
 
 - **[MVP completion status (English) — 30-second audit](docs/MVP-STATUS.md)** · **[MVP 完成度 (中文)](docs/MVP-STATUS.zh-TW.md)**
-- **[User manual (English) — install → configure → Tool API](docs/guide/user-manual.md)** ← read this if you want to integrate Symphony as a coding-service backend
+- **[User manual (English) — install → configure → Tool API](docs/guide/user-manual.md)** ← integrate Symphony as a coding-service backend
 - **[使用說明書 (中文) — 安裝 / 配置 / Tool API](docs/guide/user-manual.zh-TW.md)**
 - [API reference (English)](docs/API-REFERENCE.md) · [API reference (中文)](docs/API-REFERENCE.zh-TW.md) — curated `/api/v1/*` index with curl examples
-- [Docker quickstart guide (English, 5-minute path)](docs/guide/docker-quickstart.md)
-- [Docker 快速啟動指南 (中文)](docs/guide/docker-quickstart.zh-TW.md)
+- [Docker quickstart guide — deeper config + production hardening](docs/guide/docker-quickstart.md) · [中文](docs/guide/docker-quickstart.zh-TW.md)
 
-For development / CI without Docker:
+### Development / CI without Docker
 
 ```bash
 uv venv
@@ -105,7 +194,7 @@ uv pip install -e ".[dev,dashboard]"
 # 218 tests = 29 MVP core + 6 prompt-injection + 56 dashboard + 11 runner + 43 tool API + 30 phase B helpers + 11 mode/override + 8 metrics + 22 Linear + 2 D1 parent-gate
 .venv/bin/python -m pytest
 
-# self-contained end-to-end demo (no external API)
+# self-contained end-to-end demo (no external API, no Docker)
 .venv/bin/python examples/demo_echo.py
 ```
 

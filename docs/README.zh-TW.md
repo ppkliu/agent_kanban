@@ -70,19 +70,107 @@
 | Agent Runner | `agent_runner.py` |
 | Observability | `dashboard/` (FastAPI + WS) + `Orchestrator.state_snapshot()` |
 
-## 安裝與快速開始
+## 安裝與快速開始 — 五分鐘 demo
 
-支援的部署目標是 **Docker Compose** — 一個檔案同時帶起 Dashboard 與沙箱化的
-`opencode` 容器。完整步驟、配置參考、疑難排解都在:
+兩條路。`docker compose up` 一樣,差別只在 `WORKFLOW.md` 選用哪個 runner。
+
+**前置條件**:Docker Engine 24+、`docker compose` v2、本機 17957 port 沒佔用。
+Track B 還需要一個 LLM endpoint (本機 Ollama / vLLM / LM Studio,或雲端 API key)。
+
+### Track A — 證明 kanban 動得起來 (EchoRunner,零 LLM 依賴)
+
+最快的路徑。卡片在 5 秒內走完 Unclaimed → Claimed → Running → Released,
+不需要任何 model。
+
+```bash
+git clone <this-repo>
+cd agent_kanban
+
+# 1. 用零 LLM 的 demo workflow (EchoRunner)
+cp examples/WORKFLOW.demo-echo.md WORKFLOW.md
+
+# 2. 起單一容器
+docker compose up -d
+curl -fsS http://localhost:17957/healthz       # → {"ok": true}
+
+# 3. 開瀏覽器看 kanban (5 個空欄位)
+#    macOS:   open http://localhost:17957
+#    Linux:   xdg-open http://localhost:17957
+#    Windows: start http://localhost:17957
+
+# 4. 另開一個 terminal,從 Tool API 端到端跑一次
+SYMPHONY_URL=http://localhost:17957 \
+  .venv/bin/python examples/tool_api_client.py
+#  (Symphony 本身不需要 .venv;這個 client 只用 stdlib,任何 Python 都能跑)
+```
+
+第 4 步在跑的時候盯著瀏覽器看,新卡片會橫過 kanban。點卡片打開
+drawer 就能看到 agent 的完整 event stream。EchoRunner 跑一個 turn 就
+declare done,所以整個 demo 幾秒就結束。
+
+### Track B — 真正用 opencode + 本機 LLM 做 coding
+
+一樣的 compose,但 runner 換成真的 `opencode`,指向你的 LLM endpoint。
+把 model + endpoint config 寫到 `.env`:
+
+```bash
+cd agent_kanban
+
+# 1. 用 opencode 的 workflow (就是預設那份)
+cp examples/WORKFLOW.docker.md WORKFLOW.md
+
+# 2. 配置 LLM endpoint。複製範本後編輯:
+cp .env.example .env
+cat >> .env <<'EOF'
+# Dashboard REST + WebSocket 的 bearer token (建議)
+DASHBOARD_API_KEY=$(openssl rand -hex 32)
+
+# opencode 走 LiteLLM 的 provider id
+# 常用:ollama / openai / anthropic / vllm / lm-studio / sglang
+OPENCODE_PROVIDER=ollama
+
+# 你 LLM endpoint 的 base URL
+# - Ollama 預設:  http://host.docker.internal:11434
+# - vLLM / SGLang: http://host.docker.internal:8000
+# - LM Studio:     http://host.docker.internal:1234
+# - 雲端 (Anthropic / OpenAI):用 LiteLLM 該 provider 的預設值即可
+OPENCODE_BASE_URL=http://host.docker.internal:11434
+
+# model 名稱 (要跟你 endpoint 真的有的 model 對得起來)
+OPENCODE_MODEL=qwen2.5-coder:32b
+
+# API key,只有雲端 provider (anthropic / openai) 才需要。本機
+# endpoint (Ollama / vLLM / LM Studio) 留空。
+OPENCODE_API_KEY=
+EOF
+
+# 3. 起
+docker compose up -d
+curl -fsS http://localhost:17957/healthz
+
+# 4. 端到端跑一次
+SYMPHONY_URL=http://localhost:17957 \
+  DASHBOARD_API_KEY=$(grep ^DASHBOARD_API_KEY .env | cut -d= -f2) \
+  python examples/tool_api_client.py
+```
+
+這次卡片會停在 **Running** 整個 agent loop。打開 drawer 可以即時看到
+`MESSAGE_DELTA` 跟 `TOOL_CALL` 事件,opencode 正在 per-issue workspace
+裡面 read / edit / 跑測試。Agent 跑完後卡片進 **Released**,附上
+結構化 summary、files-changed、agent 自己 raise 的 blockers。
+
+要換 model 不用 rebuild image:改 `.env`、`docker compose up -d`
+(compose 會重讀 env),image 不動。
+
+### 想看更多
 
 - **[MVP 完成度 (中文,30 秒 audit)](MVP-STATUS.zh-TW.md)** · **[MVP completion status (English)](MVP-STATUS.md)**
 - **[使用說明書 (中文) — 安裝 / 配置 / Tool API](guide/user-manual.zh-TW.md)** ← 想把 Symphony 接成 coding-service backend 看這份
 - **[User manual (English)](guide/user-manual.md)**
 - [API reference (中文)](API-REFERENCE.zh-TW.md) · [API reference (English)](API-REFERENCE.md) — `/api/v1/*` 分層 index 含 curl 範例
-- [Docker 快速啟動指南 (中文,5 分鐘版)](guide/docker-quickstart.zh-TW.md)
-- [Docker quickstart guide (English)](guide/docker-quickstart.md)
+- [Docker 快速啟動指南 — 深入配置與 production hardening (中文)](guide/docker-quickstart.zh-TW.md) · [English](guide/docker-quickstart.md)
 
-不需要 Docker、想直接開發 / CI:
+### 不要 Docker、純開發 / CI
 
 ```bash
 uv venv
