@@ -163,10 +163,42 @@ class PriorityReorderIn(BaseModel):
 
 
 class ConfigPatchIn(BaseModel):
-    """Whitelist of runtime knobs operators can change without editing WORKFLOW.md."""
+    """Whitelist of runtime knobs operators can change without editing WORKFLOW.md.
+
+    All fields are optional. Changes apply in-memory only — the on-disk
+    WORKFLOW.md is unchanged; a process restart reverts to the file's
+    values. Runner fields rebuild ``orch.runner`` so subsequent dispatches
+    pick up the new backend; already-running workers keep their captured
+    runner reference and finish on the old one.
+    """
 
     max_concurrent_agents: Optional[int] = Field(default=None, ge=1, le=200)
     polling_interval_ms: Optional[int] = Field(default=None, ge=100, le=3_600_000)
+    runner_kind: Optional[str] = Field(
+        default=None,
+        description="One of: echo / opencode / anthropic_api / claude_cli",
+    )
+    runner_model: Optional[str] = None
+    runner_provider: Optional[str] = Field(
+        default=None,
+        description="LiteLLM provider id used by opencode (vllm / ollama / anthropic / ...)",
+    )
+    runner_max_tokens: Optional[int] = Field(default=None, ge=1, le=1_000_000)
+    runner_allowed_tools: Optional[list[str]] = None
+    runner_base_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Sets OPENCODE_BASE_URL env so the opencode subprocess and "
+            "child runners pick it up at next dispatch. Empty string clears."
+        ),
+    )
+    runner_api_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Sets OPENCODE_API_KEY env (also ANTHROPIC_API_KEY for the "
+            "anthropic_api runner). Empty string clears."
+        ),
+    )
 
 
 class WorkflowPutIn(BaseModel):
@@ -476,6 +508,64 @@ def patch_config(body: ConfigPatchIn, request: Request) -> dict[str, Any]:
     if body.polling_interval_ms is not None:
         cfg.polling_interval_ms = body.polling_interval_ms
         changed["polling_interval_ms"] = cfg.polling_interval_ms
+
+    # Runner config patch: mutate workflow config + env, then rebuild the
+    # orchestrator's runner so the next dispatch uses it. In-flight workers
+    # keep their captured runner reference and finish on the old runner.
+    runner_dirty = False
+    if body.runner_kind is not None:
+        cfg.runner_kind = body.runner_kind
+        changed["runner_kind"] = cfg.runner_kind
+        runner_dirty = True
+    if body.runner_model is not None:
+        cfg.runner_model = body.runner_model
+        changed["runner_model"] = cfg.runner_model
+        runner_dirty = True
+    if body.runner_provider is not None:
+        cfg.runner_provider = body.runner_provider
+        changed["runner_provider"] = cfg.runner_provider
+        runner_dirty = True
+    if body.runner_max_tokens is not None:
+        cfg.runner_max_tokens = body.runner_max_tokens
+        changed["runner_max_tokens"] = cfg.runner_max_tokens
+        runner_dirty = True
+    if body.runner_allowed_tools is not None:
+        cfg.runner_allowed_tools = list(body.runner_allowed_tools)
+        changed["runner_allowed_tools"] = cfg.runner_allowed_tools
+        runner_dirty = True
+    if body.runner_base_url is not None:
+        if body.runner_base_url == "":
+            os.environ.pop("OPENCODE_BASE_URL", None)
+        else:
+            os.environ["OPENCODE_BASE_URL"] = body.runner_base_url
+        changed["runner_base_url"] = body.runner_base_url
+        runner_dirty = True
+    if body.runner_api_key is not None:
+        if body.runner_api_key == "":
+            os.environ.pop("OPENCODE_API_KEY", None)
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+        else:
+            os.environ["OPENCODE_API_KEY"] = body.runner_api_key
+            os.environ["ANTHROPIC_API_KEY"] = body.runner_api_key
+        # api_key intentionally omitted from `changed` to avoid echoing
+        # secrets back over the WS / REST surface.
+        changed["runner_api_key"] = "<set>" if body.runner_api_key else "<cleared>"
+        runner_dirty = True
+
+    if runner_dirty:
+        from ..agent_runner import build_runner  # noqa: PLC0415 — scope to patch path
+        try:
+            state.orch.runner = build_runner(
+                cfg.runner_kind,
+                command=cfg.runner_command,
+                model=cfg.runner_model,
+                max_tokens=cfg.runner_max_tokens,
+                provider=cfg.runner_provider,
+                allowed_tools=cfg.runner_allowed_tools,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     if changed:
         state.broadcast(
             {"type": "config_changed", "config": _config_dict(state.orch.workflow)}

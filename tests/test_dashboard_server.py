@@ -150,6 +150,58 @@ def test_config_patch_applies_whitelist(app_ctx) -> None:
     assert "tracker_api_key" not in r2.text or "leak_me" not in r2.text
 
 
+def test_config_patch_swaps_backend_runner(app_ctx, monkeypatch) -> None:
+    """Runtime runner swap: PATCH /api/v1/config with runner_kind rebuilds
+    orch.runner via build_runner() and mutates env vars for base_url /
+    api_key. The on-disk WORKFLOW.md is unchanged."""
+    from symphony_mvp.agent_runner import EchoRunner
+
+    # Sanity: fixture starts in echo (matches WORKFLOW.demo-echo style).
+    assert isinstance(app_ctx["orch"].runner, EchoRunner)
+
+    r = app_ctx["client"].patch(
+        "/api/v1/config",
+        json={
+            "runner_kind": "echo",         # idempotent self-swap; safe
+            "runner_model": "qwen3.6-27b-fp8",
+            "runner_provider": "vllm",
+            "runner_base_url": "http://localhost:8000",
+            "runner_api_key": "test-key-1",
+        },
+    )
+    assert r.status_code == 200, r.text
+    changed = r.json()["changed"]
+    assert changed["runner_model"] == "qwen3.6-27b-fp8"
+    assert changed["runner_provider"] == "vllm"
+    assert changed["runner_base_url"] == "http://localhost:8000"
+    # api_key is intentionally masked in the response.
+    assert changed["runner_api_key"] == "<set>"
+    assert "test-key-1" not in r.text
+
+    # Workflow config now reflects the swap.
+    cfg = app_ctx["orch"].workflow.config
+    assert cfg.runner_model == "qwen3.6-27b-fp8"
+    assert cfg.runner_provider == "vllm"
+
+    # Env vars set for the next dispatch / subprocess spawn.
+    import os
+    assert os.environ.get("OPENCODE_BASE_URL") == "http://localhost:8000"
+    assert os.environ.get("OPENCODE_API_KEY") == "test-key-1"
+
+    # Cleanup so subsequent tests don't inherit our env mutations.
+    os.environ.pop("OPENCODE_BASE_URL", None)
+    os.environ.pop("OPENCODE_API_KEY", None)
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+
+
+def test_config_patch_unknown_runner_kind_returns_400(app_ctx) -> None:
+    r = app_ctx["client"].patch(
+        "/api/v1/config", json={"runner_kind": "totally-fake-runner"}
+    )
+    assert r.status_code == 400
+    assert "Unknown runner kind" in r.text
+
+
 def test_workflow_get_returns_content(app_ctx) -> None:
     r = app_ctx["client"].get("/api/v1/workflow")
     assert r.status_code == 200
