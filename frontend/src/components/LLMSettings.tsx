@@ -14,18 +14,21 @@ interface Props {
 }
 
 const PROVIDER_LABELS: Record<LLMProvider, string> = {
-  ollama: "Ollama (local, default)",
+  vllm: "vLLM (local, default)",
+  ollama: "Ollama (local)",
   "openai-compatible": "OpenAI-compatible",
   anthropic: "Anthropic",
 };
 
 const BASE_URL_PLACEHOLDER: Record<LLMProvider, string> = {
+  vllm: "http://localhost:8000",
   ollama: "http://localhost:11434",
   "openai-compatible": "http://localhost:8000  (or https://api.openai.com)",
   anthropic: "https://api.anthropic.com",
 };
 
 const PROVIDER_NEEDS_KEY: Record<LLMProvider, boolean> = {
+  vllm: false,
   ollama: false,
   "openai-compatible": true,
   anthropic: true,
@@ -125,7 +128,9 @@ export default function LLMSettings({ open, onClose }: Props) {
               {PROVIDER_NEEDS_KEY[cfg.provider] ? (
                 <span className="text-amber-400">(required)</span>
               ) : (
-                <span className="text-zinc-500">(not used for Ollama)</span>
+                <span className="text-zinc-500">
+                  (not used for vLLM / Ollama)
+                </span>
               )}
             </span>
             <input

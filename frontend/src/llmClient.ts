@@ -48,7 +48,10 @@ export async function chatCompletion(
     return text;
   }
 
-  if (config.provider === "openai-compatible") {
+  if (config.provider === "vllm" || config.provider === "openai-compatible") {
+    // vLLM serves the OpenAI Messages API at /v1/chat/completions. The
+    // request / response shapes are identical; we only branch labels in
+    // the UI. vLLM typically runs without an API key but accepts one if set.
     const r = await fetch(`${base}/v1/chat/completions`, {
       method: "POST",
       headers: {
@@ -64,13 +67,16 @@ export async function chatCompletion(
         stream: false,
       }),
     });
-    if (!r.ok) throw new Error(`openai ${r.status}: ${await safeText(r)}`);
+    if (!r.ok)
+      throw new Error(`${config.provider} ${r.status}: ${await safeText(r)}`);
     const j = (await r.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
     const text = j.choices?.[0]?.message?.content;
     if (typeof text !== "string")
-      throw new Error("openai response missing choices[0].message.content");
+      throw new Error(
+        `${config.provider} response missing choices[0].message.content`,
+      );
     return text;
   }
 

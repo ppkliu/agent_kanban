@@ -7,7 +7,11 @@
  * dashboard works out of the box without any cloud key.
  */
 
-export type LLMProvider = "ollama" | "openai-compatible" | "anthropic";
+export type LLMProvider =
+  | "vllm"
+  | "ollama"
+  | "openai-compatible"
+  | "anthropic";
 
 export interface LLMConfig {
   provider: LLMProvider;
@@ -16,17 +20,26 @@ export interface LLMConfig {
   api_key: string;
 }
 
+/** vLLM is the canonical local-LLM inference engine for this project —
+ * production-grade throughput, batched serving, speaks the OpenAI Messages
+ * API on /v1/chat/completions. Ollama / OpenAI / Anthropic are alternates
+ * selectable in LLMSettings. */
 export const DEFAULT_LLM_CONFIG: LLMConfig = {
-  provider: "ollama",
-  base_url: "http://localhost:11434",
-  model: "qwen2.5-coder:32b",
+  provider: "vllm",
+  base_url: "http://localhost:8000",
+  model: "Qwen/Qwen2.5-Coder-32B-Instruct",
   api_key: "",
 };
 
 const STORAGE_KEY = "symphony.llmConfig";
 
 function isValidProvider(v: unknown): v is LLMProvider {
-  return v === "ollama" || v === "openai-compatible" || v === "anthropic";
+  return (
+    v === "vllm" ||
+    v === "ollama" ||
+    v === "openai-compatible" ||
+    v === "anthropic"
+  );
 }
 
 export function getStoredLLMConfig(): LLMConfig {

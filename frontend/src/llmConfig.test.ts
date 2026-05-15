@@ -18,11 +18,11 @@ afterEach(() => {
 });
 
 describe("llmConfig", () => {
-  it("returns Ollama / localhost defaults when nothing is stored", () => {
+  it("returns vLLM / localhost:8000 defaults when nothing is stored", () => {
     const cfg = getStoredLLMConfig();
     expect(cfg).toEqual(DEFAULT_LLM_CONFIG);
-    expect(cfg.provider).toBe("ollama");
-    expect(cfg.base_url).toBe("http://localhost:11434");
+    expect(cfg.provider).toBe("vllm");
+    expect(cfg.base_url).toBe("http://localhost:8000");
   });
 
   it("roundtrips saveLLMConfig → getStoredLLMConfig", () => {
@@ -42,13 +42,13 @@ describe("llmConfig", () => {
     expect(cfg).toEqual(DEFAULT_LLM_CONFIG);
   });
 
-  it("replaces unknown provider with default Ollama", () => {
+  it("replaces unknown provider with default vLLM", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ provider: "google-vertex", base_url: "x" }),
     );
     const cfg = getStoredLLMConfig();
-    expect(cfg.provider).toBe("ollama");
+    expect(cfg.provider).toBe("vllm");
     expect(cfg.base_url).toBe("x"); // valid field preserved
   });
 
