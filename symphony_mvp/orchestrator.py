@@ -34,6 +34,22 @@ from .workspace import WorkspaceManager
 
 logger = logging.getLogger(__name__)
 
+# Children of a parent task whose attempt ended for one of these reasons are
+# held back at the dispatch gate — the parent failed, so the subtask graph
+# under it is no longer meaningful. Keep distinct from the SPEC success set
+# ({HANDOFF, TRACKER_TERMINAL, AGENT_FINISHED}); anything outside that success
+# set counts as failure here.
+_PARENT_FAILURE_REASONS: frozenset[TerminalReason] = frozenset(
+    {
+        TerminalReason.ABORTED,
+        TerminalReason.ERROR,
+        TerminalReason.MAX_TURNS,
+        TerminalReason.STALL_TIMEOUT,
+        TerminalReason.USER_INPUT_REQUIRED,
+    }
+)
+_PARENT_LABEL_PREFIX = "parent:"
+
 
 @runtime_checkable
 class DashboardBridgeProtocol(Protocol):
@@ -298,6 +314,18 @@ class Orchestrator:
             slots -= 1
 
     def _has_open_blockers(self, issue: Issue) -> bool:
+        # Phase D1 parent gate: if the issue carries a parent:<id> label and
+        # the parent's attempt finalised in a failure terminal_reason, freeze
+        # this child. Parent failure poisons the subtask graph under it.
+        parent_id = self._extract_parent_id(issue.labels)
+        if parent_id is not None:
+            parent_att = self._attempts.get(parent_id)
+            if (
+                parent_att is not None
+                and parent_att.state == RunState.RELEASED
+                and parent_att.terminal_reason in _PARENT_FAILURE_REASONS
+            ):
+                return True
         if not issue.blocked_by:
             return False
         try:
@@ -310,6 +338,13 @@ class Orchestrator:
             if state.lower() not in terminal_set:
                 return True
         return False
+
+    @staticmethod
+    def _extract_parent_id(labels: list[str]) -> str | None:
+        for label in labels:
+            if label.startswith(_PARENT_LABEL_PREFIX):
+                return label[len(_PARENT_LABEL_PREFIX):]
+        return None
 
     # ----- Worker management -----
     def _spawn_worker(self, issue: Issue, att: RunAttempt) -> None:
