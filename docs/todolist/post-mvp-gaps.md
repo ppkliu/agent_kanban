@@ -75,6 +75,25 @@
     超過回 429 + `Retry-After: 60`;idempotency replay 不計入額度);
     ⏳ multi-repo / sandbox 三層防線
   - 跟 Docker Phase 2 完全正交,可平行做
+- [ ] **Autonomous coding loop (Phase D — 5-phase roadmap)** — 對外暴露一條
+  「下放高階目標 → 子任務拆解 → 依相依度排序 → 執行 → 回報 → 出現阻塞時
+  escalate → 整體 summary」的完整 loop。詳細 plan 在
+  `~/.claude/plans/w6-1-vitest-eager-meadow.md`。每個 D-phase 約 3–7 commit + 6–8 test。
+  - **D1 (本批 commits,已落地)** — Subtask graph 基礎建設:`SubmitTaskIn`
+    新增 `parent_task_id` + `depends_on` 兩欄;`_make_task_issue` 把
+    parent_task_id 寫成 `parent:<id>` issue label、把 depends_on 直接灌進
+    `Issue.blocked_by`;orchestrator `_has_open_blockers` 多 gate 一條:若
+    parent attempt 以 ERROR / ABORTED / MAX_TURNS / STALL_TIMEOUT /
+    USER_INPUT_REQUIRED 結束,所有 pending child 都凍結;新 endpoint
+    `/api/v1/tools/list_tasks` 給上游 agent 走 child graph + 按 status 篩。
+    自含 7 個新 test (2 orchestrator + 5 tool_api)
+  - **D2 (待開)** — Decomposition 雙路徑入口:`subtasks=[...]` 直接收 caller
+    切好的子任務 list,或 `decompose=true` 跑一次 plan-mode runner 自動拆解
+  - **D3 (待開)** — Human-intervention escalation:新 `TerminalReason.NEEDS_HUMAN`
+    + runner 解析 `[HUMAN_REQUIRED]` marker + `resolve_human_block` endpoint
+  - **D4 (待開)** — Periodic CHECKPOINT events 給 mid-flight 進度回報
+  - **D5 (待開)** — Cross-task rollup summary (`get_workflow_result` aggregator)
+  - 「定時 self-trigger」這條已由現有 30s polling loop 覆蓋,只剩文件補上
 - [ ] **Docker scaffolding Phase 2:雙容器爆炸半徑切分** — 把 `opencode` CLI
   從 dashboard 容器抽離到獨立的 `symphony-opencode` service
   - 動機:目前 dashboard 容器同時跑 FastAPI 跟 opencode 子行程,任意 tool call

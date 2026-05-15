@@ -37,6 +37,7 @@ the design rationale.
 | `POST` | `/api/v1/tools/check_task_status` | Poll status + coarse stage |
 | `POST` | `/api/v1/tools/get_task_result` | Fetch structured result of a completed task |
 | `POST` | `/api/v1/tools/cancel_task` | Abort a running task (idempotent) |
+| `POST` | `/api/v1/tools/list_tasks` | Enumerate Tool API tasks with optional `parent_task_id` + `status` filter |
 
 ### Example round-trip
 
@@ -86,6 +87,19 @@ For a runnable end-to-end demo using only the stdlib see
   and echoes it back; otherwise a fresh id is generated. Idempotency
   replays return the original task's trace_id so log correlation keeps
   pointing at the same task across retries.
+- **`parent_task_id`** + **`depends_on`** (request, optional): Phase D1
+  subtask graph. `parent_task_id` is encoded as a `parent:<id>` label on
+  the Issue; if the parent's attempt ends in a failure terminal_reason
+  (ERROR / ABORTED / MAX_TURNS / STALL_TIMEOUT / USER_INPUT_REQUIRED)
+  the orchestrator gates dispatch for every child still pending under
+  it. `depends_on` is a list of sibling task_ids that must reach a
+  terminal state before this task is dispatched — maps directly to
+  `Issue.blocked_by` and is consumed by the existing dispatch gate.
+- **`list_tasks`**: returns a flat list of Tool API tasks sorted by
+  `created_at` ascending. Filter with `parent_task_id` (walk a child
+  graph) or `status` (scan failed-only / running-only). `limit` caps
+  the response (default 100, max 500). Read-only — does not spawn an
+  agent.
 - **`status`** (in `check_task_status`): `pending` / `running` / `done` /
   `failed` / `cancelled`.
 - **`stage`** (in `check_task_status`): `queued` / `exploring_codebase` /
