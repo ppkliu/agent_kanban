@@ -278,3 +278,23 @@ def test_websocket_filter_narrows_by_issue_id(app_ctx) -> None:
         payload = _recv_until_type(ws, "agent_event")
         assert payload["issue_id"] == "id-MT-1"
         assert payload["event"]["data"]["text"] == "included"
+
+
+def test_websocket_pushes_state_snapshot_on_connect(app_ctx) -> None:
+    """The first push after WS connect (and after any replayed events) is
+    a state_snapshot containing the same body the REST /state route emits.
+    Frontend relies on this to avoid REST polling for kanban state."""
+    client = app_ctx["client"]
+    with client.websocket_connect("/api/v1/events") as ws:
+        payload = _recv_until_type(ws, "state_snapshot")
+        snap = payload["snapshot"]
+        assert "columns" in snap
+        assert "config" in snap
+        assert "totals" in snap
+        assert set(snap["columns"].keys()) == {
+            "pending",
+            "claimed",
+            "running",
+            "retry_queued",
+            "released",
+        }
