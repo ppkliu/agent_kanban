@@ -807,6 +807,29 @@ def create_app(
         bridge.add_event_subscriber(_on_event)
         bridge.add_transition_subscriber(_on_transition)
         state.add_broadcaster(_on_broadcast)
+
+        # Set of message types that imply a state mutation. Whenever one of
+        # these fires we trail it with a state_snapshot push so the frontend
+        # doesn't have to poll /api/v1/state for reconciliation.
+        _STATE_MUTATING_TYPES = {
+            "fsm_transition",
+            "config_changed",
+            "workflow_reloaded",
+        }
+
+        async def _push_state_snapshot() -> None:
+            try:
+                snap = _build_state_snapshot(orchestrator, bridge)
+            except Exception:  # noqa: BLE001
+                logger.exception("state_snapshot build failed")
+                return
+            await websocket.send_text(
+                json.dumps(
+                    {"type": "state_snapshot", "snapshot": snap},
+                    default=str,
+                )
+            )
+
         try:
             # Replay recent ring-buffer events for context on connect.
             with orchestrator._lock:  # noqa: SLF001
@@ -831,9 +854,16 @@ def create_app(
                         )
                     )
 
+            # Initial state push so the client doesn't need an opening REST
+            # /state call. The frontend store relies on this to populate the
+            # kanban without polling.
+            await _push_state_snapshot()
+
             while True:
                 msg = await queue.get()
                 await websocket.send_text(json.dumps(msg, default=str))
+                if msg.get("type") in _STATE_MUTATING_TYPES:
+                    await _push_state_snapshot()
         except WebSocketDisconnect:
             pass
         except Exception:  # noqa: BLE001

@@ -215,12 +215,21 @@ def test_workspace_file_rejects_path_traversal(app_ctx) -> None:
 
 # ----------------- B7: WS broadcast on config / workflow -----------------
 
+def _recv_until_type(ws, want_type: str) -> dict:
+    """Skip the initial / trailing state_snapshot pushes the WS handler
+    emits so this test can target the specific broadcast it cares about."""
+    for _ in range(20):
+        payload = json.loads(ws.receive_text())
+        if payload.get("type") == want_type:
+            return payload
+    raise AssertionError(f"never saw a {want_type} message on the websocket")
+
+
 def test_websocket_broadcasts_config_changed(app_ctx) -> None:
     client = app_ctx["client"]
     with client.websocket_connect("/api/v1/events") as ws:
         client.patch("/api/v1/config", json={"max_concurrent_agents": 9})
-        msg = json.loads(ws.receive_text())
-        assert msg["type"] == "config_changed"
+        msg = _recv_until_type(ws, "config_changed")
         assert msg["config"]["max_concurrent_agents"] == 9
 
 
@@ -231,8 +240,7 @@ def test_websocket_broadcasts_workflow_reloaded(app_ctx) -> None:
     )
     with client.websocket_connect("/api/v1/events") as ws:
         client.put("/api/v1/workflow", json={"content": new_content})
-        msg = json.loads(ws.receive_text())
-        assert msg["type"] == "workflow_reloaded"
+        msg = _recv_until_type(ws, "workflow_reloaded")
         assert msg["ok"] is True
         assert msg["config"]["max_concurrent_agents"] == 4
 

@@ -219,6 +219,17 @@ def test_auth_required_when_api_key_set(tmp_path: Path) -> None:
 # ----- WebSocket -----
 
 
+def _recv_until_type(ws, want_type: str) -> dict:
+    """Read WS messages, skipping the initial / trailing state_snapshot
+    pushes the server emits, until one of the requested `want_type` arrives.
+    Bounded so a buggy server doesn't hang the test."""
+    for _ in range(20):
+        payload = json.loads(ws.receive_text())
+        if payload.get("type") == want_type:
+            return payload
+    raise AssertionError(f"never saw a {want_type} message on the websocket")
+
+
 def test_websocket_streams_agent_events(app_ctx) -> None:
     bridge = app_ctx["bridge"]
     client = app_ctx["client"]
@@ -234,9 +245,7 @@ def test_websocket_streams_agent_events(app_ctx) -> None:
                 data={"text": "hello"},
             ),
         )
-        msg = ws.receive_text()
-        payload = json.loads(msg)
-        assert payload["type"] == "agent_event"
+        payload = _recv_until_type(ws, "agent_event")
         assert payload["issue_id"] == "id-MT-1"
         assert payload["event"]["kind"] == "message_delta"
         assert payload["event"]["data"]["text"] == "hello"
@@ -266,7 +275,6 @@ def test_websocket_filter_narrows_by_issue_id(app_ctx) -> None:
                 data={"text": "included"},
             ),
         )
-        msg = ws.receive_text()
-        payload = json.loads(msg)
+        payload = _recv_until_type(ws, "agent_event")
         assert payload["issue_id"] == "id-MT-1"
         assert payload["event"]["data"]["text"] == "included"
