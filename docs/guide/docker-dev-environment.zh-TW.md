@@ -34,7 +34,10 @@ dev 流程預期你在 host 改 code、在 container 裡執行。
 git clone <this-repo>
 cd agent_kanban
 
-# (一次性) 放一份 WORKFLOW.md。echo demo 或 opencode 預設都可以
+# (必須先做) 放一份 WORKFLOW.md。echo demo 或 opencode 預設都可以。
+# 漏這步的話 Docker 會把 bind-mount 來源端自動建成「目錄」,然後
+# container 啟動時讀 WORKFLOW.md 會丟 IsADirectoryError 直接退出。
+# scripts/dev.sh 現在會 pre-flight 擋掉,但你還是得先把檔案放好。
 cp examples/WORKFLOW.demo-echo.md WORKFLOW.md
 
 # 起 dev 後端
@@ -47,6 +50,20 @@ cd frontend && npm install && npm run dev
 
 完事。改 `symphony_mvp/**.py` 後跑 `./scripts/dev.sh restart` 就好。
 改 `frontend/src/` 下的東西,Vite 在瀏覽器自動 hot-reload。
+
+### 如果漏了 `cp` 步驟、WORKFLOW.md 變成資料夾
+
+症狀:`./scripts/dev.sh ps` 表格是空的 (或 `ps -a` 顯示 "Exited (1)"),
+`./scripts/dev.sh logs` 印出 `IsADirectoryError: '/app/WORKFLOW.md'`。
+修法:
+
+```bash
+./scripts/dev.sh down
+rmdir WORKFLOW.md                              # 空目錄 + parent 你有權限
+# 或:  sudo rm -rf WORKFLOW.md                 # root-owned 就用 sudo
+cp examples/WORKFLOW.demo-echo.md WORKFLOW.md
+./scripts/dev.sh up
+```
 
 ---
 

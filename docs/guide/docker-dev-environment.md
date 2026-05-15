@@ -37,7 +37,11 @@ container.
 git clone <this-repo>
 cd agent_kanban
 
-# (one-time) put a WORKFLOW.md in place. Either the echo demo or opencode default works.
+# (REQUIRED FIRST) put a WORKFLOW.md in place. Either example works.
+# Without this step, Docker auto-creates the bind-mount source as a
+# directory and the container crashes with IsADirectoryError on load —
+# scripts/dev.sh now pre-flights this and refuses to start, but you
+# still have to put a file there before `up`.
 cp examples/WORKFLOW.demo-echo.md WORKFLOW.md
 
 # Bring up the dev backend
@@ -51,6 +55,20 @@ cd frontend && npm install && npm run dev
 That's it. Edit `symphony_mvp/**.py` in your IDE; when the change is
 ready to exercise, `./scripts/dev.sh restart`. Edit anything under
 `frontend/src/`; Vite hot-reloads in the browser automatically.
+
+### If you skipped the `cp` step and have a `WORKFLOW.md` directory
+
+Symptom: `./scripts/dev.sh ps` shows an empty table (or "Exited (1)" with
+`ps -a`), and `./scripts/dev.sh logs` shows
+`IsADirectoryError: '/app/WORKFLOW.md'`. The fix:
+
+```bash
+./scripts/dev.sh down
+rmdir WORKFLOW.md                              # if empty + you own the parent
+# or:  sudo rm -rf WORKFLOW.md                 # if root-owned
+cp examples/WORKFLOW.demo-echo.md WORKFLOW.md
+./scripts/dev.sh up
+```
 
 ---
 
