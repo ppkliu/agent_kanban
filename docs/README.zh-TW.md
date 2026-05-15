@@ -169,6 +169,7 @@ SYMPHONY_URL=http://localhost:17957 \
 - **[User manual (English)](guide/user-manual.md)**
 - [API reference (中文)](API-REFERENCE.zh-TW.md) · [API reference (English)](API-REFERENCE.md) — `/api/v1/*` 分層 index 含 curl 範例
 - [Docker 快速啟動指南 — 深入配置與 production hardening (中文)](guide/docker-quickstart.zh-TW.md) · [English](guide/docker-quickstart.md)
+- [Docker 開發環境 — 一鍵後端 container + host 前端 (中文)](guide/docker-dev-environment.zh-TW.md) · [English](guide/docker-dev-environment.md) — 用 `./scripts/dev.sh` 走一鍵流程
 
 ### 不要 Docker、純開發 / CI
 

@@ -184,6 +184,7 @@ To swap models without rebuilding the container: edit `.env`, run
 - **[使用說明書 (中文) — 安裝 / 配置 / Tool API](docs/guide/user-manual.zh-TW.md)**
 - [API reference (English)](docs/API-REFERENCE.md) · [API reference (中文)](docs/API-REFERENCE.zh-TW.md) — curated `/api/v1/*` index with curl examples
 - [Docker quickstart guide — deeper config + production hardening](docs/guide/docker-quickstart.md) · [中文](docs/guide/docker-quickstart.zh-TW.md)
+- [Docker dev environment — one-command backend container + host frontend](docs/guide/docker-dev-environment.md) · [中文](docs/guide/docker-dev-environment.zh-TW.md) — uses `./scripts/dev.sh` for the one-click flow
 
 ### Development / CI without Docker
 
