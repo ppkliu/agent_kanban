@@ -263,6 +263,7 @@ def _config_dict(workflow: Workflow) -> dict[str, Any]:
         "handoff_state": cfg.handoff_state,
         "runner_kind": cfg.runner_kind,
         "runner_model": cfg.runner_model,
+        "runner_provider": cfg.runner_provider,
     }
 
 

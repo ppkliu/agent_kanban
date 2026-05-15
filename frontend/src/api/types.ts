@@ -91,6 +91,7 @@ export interface ConfigDTO {
   handoff_state: string;
   runner_kind: string;
   runner_model: string;
+  runner_provider?: string;
 }
 
 export interface StateSnapshot {
