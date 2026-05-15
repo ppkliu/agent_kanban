@@ -186,6 +186,17 @@ export const api = {
   async patchConfig(patch: {
     max_concurrent_agents?: number;
     polling_interval_ms?: number;
+    // Backend runner runtime swap (mirrors ConfigPatchIn on the server).
+    // All optional; omitted fields are not touched. `runner_base_url` and
+    // `runner_api_key` mutate process env on the server so the next
+    // opencode subprocess inherits them.
+    runner_kind?: "echo" | "opencode" | "anthropic_api" | "claude_cli";
+    runner_model?: string;
+    runner_provider?: string;
+    runner_max_tokens?: number;
+    runner_allowed_tools?: string[];
+    runner_base_url?: string;
+    runner_api_key?: string;
   }) {
     return jsonOrThrow(
       await fetch(`${API_BASE}/config`, {
