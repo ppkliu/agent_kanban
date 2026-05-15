@@ -7,6 +7,7 @@ import {
   type LLMConfig,
   type LLMProvider,
 } from "../llmConfig";
+import { testConnection, type TestConnectionResult } from "../llmClient";
 
 interface Props {
   open: boolean;
@@ -36,11 +37,18 @@ const PROVIDER_NEEDS_KEY: Record<LLMProvider, boolean> = {
 
 export default function LLMSettings({ open, onClose }: Props) {
   const [cfg, setCfg] = useState<LLMConfig>(() => getStoredLLMConfig());
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TestConnectionResult | null>(
+    null,
+  );
 
   if (!open) return null;
 
   const update = <K extends keyof LLMConfig>(key: K, value: LLMConfig[K]) => {
     setCfg((c) => ({ ...c, [key]: value }));
+    // Invalidate any prior test result — fields changed, prior verification
+    // no longer reflects what the user would save right now.
+    setTestResult(null);
   };
 
   const handleSave = () => {
@@ -51,6 +59,18 @@ export default function LLMSettings({ open, onClose }: Props) {
   const handleReset = () => {
     const fresh = resetLLMConfig();
     setCfg(fresh);
+    setTestResult(null);
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await testConnection(cfg);
+      setTestResult(r);
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (
@@ -142,6 +162,23 @@ export default function LLMSettings({ open, onClose }: Props) {
             />
           </label>
 
+          {testResult ? (
+            <div
+              className={`pt-2 border-t text-[11px] ${
+                testResult.ok
+                  ? "border-emerald-800 text-emerald-300"
+                  : "border-rose-800 text-rose-300"
+              }`}
+              role="status"
+              aria-live="polite"
+            >
+              {testResult.ok ? "✓ Response: " : "× "}
+              <code className="text-zinc-100 break-all">
+                {testResult.message}
+              </code>
+            </div>
+          ) : null}
+
           <div className="text-zinc-500 text-[11px] pt-2 border-t border-zinc-800">
             Stored in this browser's <code>localStorage</code>. For local LLM
             endpoints (Ollama / vLLM / LM Studio) this is harmless. For cloud
@@ -159,6 +196,14 @@ export default function LLMSettings({ open, onClose }: Props) {
             Reset to defaults
           </button>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleTest}
+              disabled={testing}
+              className="px-3 py-1.5 text-xs rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-50"
+              title="Send a tiny 'reply OK' prompt to the endpoint to verify reachability + auth"
+            >
+              {testing ? "Testing…" : "Test connection"}
+            </button>
             <button
               onClick={onClose}
               className="px-3 py-1.5 text-xs rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
