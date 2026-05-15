@@ -866,3 +866,154 @@ def test_list_tasks_returns_summary_shape(app_ctx) -> None:
     assert child["mode"] == "build"
     assert child["status"] == "pending"
     assert "created_at" in child
+
+
+# --------------------------------------------------------------------------- #
+# Phase D2a — Path A: caller-supplied subtask list                            #
+# --------------------------------------------------------------------------- #
+
+def test_submit_with_subtasks_creates_parent_and_linked_children(app_ctx) -> None:
+    """`subtasks=[a, b, c]` produces 4 issues: 1 parent + 3 children. Each
+    child carries a `parent:<id>` label pointing at the parent; the parent
+    itself has no parent label."""
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "Build TODO API",
+            "repo": "memory",
+            "subtasks": [
+                {"task": "data model"},
+                {"task": "CRUD endpoints"},
+                {"task": "integration tests"},
+            ],
+        },
+    )
+    assert r.status_code == 200
+    parent_id = r.json()["task_id"]
+
+    all_issues = app_ctx["tracker"].all()
+    parent = next(i for i in all_issues if i.id == parent_id)
+    children = [
+        i for i in all_issues if f"parent:{parent_id}" in i.labels
+    ]
+    assert len(children) == 3
+    assert not any(lbl.startswith("parent:") for lbl in parent.labels)
+    assert {c.title for c in children} == {
+        "data model", "CRUD endpoints", "integration tests"
+    }
+
+
+def test_subtask_sibling_depends_on_translates_to_real_task_ids(app_ctx) -> None:
+    """Sibling indices in spec.depends_on get rewritten to actual sibling
+    task_ids on the resulting Issue.blocked_by, so the existing dispatch
+    gate handles ordering with no orchestrator changes."""
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "umbrella",
+            "repo": "memory",
+            "subtasks": [
+                {"task": "first"},
+                {"task": "second", "depends_on": [0]},
+                {"task": "third", "depends_on": [0, 1]},
+            ],
+        },
+    )
+    parent_id = r.json()["task_id"]
+    children = sorted(
+        [i for i in app_ctx["tracker"].all() if f"parent:{parent_id}" in i.labels],
+        key=lambda i: i.created_at,
+    )
+    a, b, c = children
+    assert b.blocked_by == [a.id]
+    assert c.blocked_by == [a.id, b.id]
+
+
+def test_subtasks_inherit_parent_trace_id(app_ctx) -> None:
+    """Every issue (parent + all children) shares one trace_id so log
+    correlation across the whole subgraph points at the same trace."""
+    upstream = "4bf92f3577b34da6a3ce929d0e0e4736"
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        headers={"traceparent": f"00-{upstream}-00f067aa0ba902b7-01"},
+        json={
+            "task": "umbrella",
+            "repo": "memory",
+            "subtasks": [{"task": "a"}, {"task": "b"}],
+        },
+    )
+    assert r.json()["trace_id"] == upstream
+    parent_id = r.json()["task_id"]
+    label = f"trace:{upstream}"
+    for issue in app_ctx["tracker"].all():
+        if issue.id == parent_id or f"parent:{parent_id}" in issue.labels:
+            assert label in issue.labels
+
+
+def test_subtasks_idempotency_replay_returns_parent_id(app_ctx) -> None:
+    """Same idempotency_key replay returns the original parent_id and does
+    NOT create duplicate children — one key covers the whole batch."""
+    body = {
+        "task": "umbrella",
+        "repo": "memory",
+        "idempotency_key": "batch-1",
+        "subtasks": [{"task": "x"}, {"task": "y"}],
+    }
+    r1 = app_ctx["client"].post("/api/v1/tools/submit_coding_task", json=body)
+    r2 = app_ctx["client"].post("/api/v1/tools/submit_coding_task", json=body)
+    assert r1.status_code == r2.status_code == 200
+    assert r1.json()["task_id"] == r2.json()["task_id"]
+    parent_id = r1.json()["task_id"]
+    children = [
+        i for i in app_ctx["tracker"].all()
+        if f"parent:{parent_id}" in i.labels
+    ]
+    assert len(children) == 2  # no duplicates from the replay
+
+
+def test_subtasks_invalid_depends_on_index_returns_400(app_ctx) -> None:
+    """Forward-only sibling reference rule: depends_on[idx] must be < own
+    index. Out-of-range or self/forward references are rejected before any
+    state mutation."""
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "umbrella",
+            "repo": "memory",
+            "subtasks": [
+                {"task": "a"},
+                {"task": "b", "depends_on": [5]},
+            ],
+        },
+    )
+    assert r.status_code == 400
+    assert "depends_on" in r.json()["detail"]
+    # No issues should have been created
+    titles = {i.title for i in app_ctx["tracker"].all()}
+    assert "umbrella" not in titles
+    assert "a" not in titles
+
+
+def test_subtasks_per_child_mode_only_on_child(app_ctx) -> None:
+    """Per-child `mode` writes `mode:<value>` on that child only — the
+    parent's labels are independent."""
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "umbrella",
+            "repo": "memory",
+            "subtasks": [
+                {"task": "scan", "mode": "review"},
+                {"task": "implement", "mode": "build"},
+            ],
+        },
+    )
+    parent_id = r.json()["task_id"]
+    parent = next(i for i in app_ctx["tracker"].all() if i.id == parent_id)
+    children = sorted(
+        [i for i in app_ctx["tracker"].all() if f"parent:{parent_id}" in i.labels],
+        key=lambda i: i.created_at,
+    )
+    assert not any(lbl.startswith("mode:") for lbl in parent.labels)
+    assert "mode:review" in children[0].labels
+    assert "mode:build" in children[1].labels
