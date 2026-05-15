@@ -44,7 +44,11 @@ COPY symphony_mvp/ ./symphony_mvp/
 RUN pip install -e ".[dev,dashboard]"
 
 # Data + workspace dirs live on bind mounts (see docker-compose.dev.yml).
-RUN mkdir -p /app/data /app/workspaces /app/frontend/dist
+# Note: NO /app/frontend/dist here — the dev image deliberately does not
+# ship the SPA build (frontend dev runs on host). server.py's static-file
+# mount skips when dist/assets isn't present, so leaving the dir absent
+# is the right signal.
+RUN mkdir -p /app/data /app/workspaces
 
 EXPOSE 7957
 
