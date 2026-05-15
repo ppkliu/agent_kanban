@@ -118,3 +118,40 @@ async function safeText(r: Response): Promise<string> {
     return "(no body)";
   }
 }
+
+/** Minimal verification round-trip — asks the configured endpoint to reply
+ * with one word so the UI can confirm "yes, I can reach this LLM". Used by
+ * the LLMSettings modal's "Test connection" button. Bounded by a 15-second
+ * AbortController so the UI never spins forever. */
+export interface TestConnectionResult {
+  ok: boolean;
+  /** assistant text on success, error message on failure (truncated). */
+  message: string;
+}
+
+export async function testConnection(
+  config: LLMConfig,
+): Promise<TestConnectionResult> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 15_000);
+  try {
+    const text = await chatCompletion(
+      [
+        {
+          role: "user",
+          content: "Reply with only the two-letter word: OK",
+        },
+      ],
+      config,
+      { signal: ctrl.signal, max_tokens: 8 },
+    );
+    return { ok: true, message: text.trim().slice(0, 120) };
+  } catch (err) {
+    const e = err as Error;
+    const msg =
+      e.name === "AbortError" ? "request timed out (15s)" : e.message;
+    return { ok: false, message: msg.slice(0, 240) };
+  } finally {
+    clearTimeout(t);
+  }
+}
