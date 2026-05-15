@@ -170,6 +170,49 @@ def test_blocked_by_holds_dispatch(tmp_path: Path) -> None:
     assert att_wait is None  # didn't dispatch
 
 
+def _seed_finalised_parent_attempt(
+    orch: Orchestrator, parent: Issue, terminal_reason: TerminalReason
+) -> None:
+    """Inject a RELEASED RunAttempt with the given terminal_reason into the
+    orchestrator's _attempts dict — simulates the parent having finished
+    without spinning a real worker."""
+    from symphony_mvp.models import RunAttempt
+    att = RunAttempt(
+        issue_id=parent.id,
+        attempt_number=1,
+        state=RunState.RELEASED,
+        started_at=datetime.now(timezone.utc),
+        ended_at=datetime.now(timezone.utc),
+        terminal_reason=terminal_reason,
+    )
+    orch._attempts[parent.id] = att  # noqa: SLF001
+
+
+def test_parent_failure_holds_child_dispatch(tmp_path: Path) -> None:
+    """A child Issue carrying a `parent:<id>` label is held back at the
+    dispatch gate when the parent's attempt has finalised with a failure
+    terminal_reason — the subtask graph under a dead parent is poisoned."""
+    parent = _make_issue("MT-PARENT")
+    child = _make_issue("MT-CHILD", labels=[f"parent:{parent.id}"])
+    orch, _, _ = _setup(tmp_path, issues=[child])  # only child in tracker
+    _seed_finalised_parent_attempt(orch, parent, TerminalReason.ERROR)
+
+    orch.tick()
+    assert orch._attempts.get(child.id) is None  # noqa: SLF001
+
+
+def test_parent_success_does_not_hold_child(tmp_path: Path) -> None:
+    """When the parent finishes successfully (AGENT_FINISHED), the child is
+    free to dispatch — only failure poisons the subtask graph."""
+    parent = _make_issue("MT-OK-PARENT")
+    child = _make_issue("MT-OK-CHILD", labels=[f"parent:{parent.id}"])
+    orch, _, _ = _setup(tmp_path, issues=[child])
+    _seed_finalised_parent_attempt(orch, parent, TerminalReason.AGENT_FINISHED)
+
+    orch.tick()
+    assert orch._attempts.get(child.id) is not None  # noqa: SLF001
+
+
 def test_state_snapshot_serializable(tmp_path: Path) -> None:
     import json
     issue = _make_issue("MT-SNAP")
