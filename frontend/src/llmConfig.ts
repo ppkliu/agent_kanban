@@ -27,7 +27,7 @@ export interface LLMConfig {
 export const DEFAULT_LLM_CONFIG: LLMConfig = {
   provider: "vllm",
   base_url: "http://localhost:8000",
-  model: "Qwen/Qwen2.5-Coder-32B-Instruct",
+  model: "qwen3.6-27b-fp8",
   api_key: "",
 };
 
