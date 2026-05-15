@@ -31,6 +31,9 @@ htmlcov/
 # ---------- Symphony runtime artefacts ----------
 # Per-issue agent workspaces (regenerated each run, may contain checkout/clones)
 workspaces/
+# Per-deployment WORKFLOW.md copy (the repo ships examples/WORKFLOW*.md
+# instead — operators cp one of those to ./WORKFLOW.md to activate)
+/WORKFLOW.md
 # Dashboard SQLite (event/hint/override store, not a config artefact)
 dashboard.db
 *.db
