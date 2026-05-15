@@ -35,7 +35,42 @@ readonly SERVICE="dashboard-dev"
 # --------------------------------------------------------------------------- #
 
 cmd_up() {
+    # Pre-flight: WORKFLOW.md must exist on the host as a file. If it's
+    # missing, the `./WORKFLOW.md:/app/WORKFLOW.md:ro` bind-mount makes
+    # Docker auto-create a DIRECTORY at the source path, and the container
+    # then crashes loading "/app/WORKFLOW.md" as a workflow file
+    # (IsADirectoryError). Catch it before that footgun fires.
+    if [ ! -e WORKFLOW.md ]; then
+        echo "ERROR: ./WORKFLOW.md is missing." >&2
+        echo "  → Copy one of the shipped examples first:" >&2
+        echo "    cp examples/WORKFLOW.demo-echo.md WORKFLOW.md   # zero-LLM demo" >&2
+        echo "    cp examples/WORKFLOW.docker.md     WORKFLOW.md   # opencode + local LLM" >&2
+        exit 1
+    fi
+    if [ -d WORKFLOW.md ]; then
+        echo "ERROR: ./WORKFLOW.md is a directory, not a file." >&2
+        echo "  This usually means a prior \`up\` ran without WORKFLOW.md and" >&2
+        echo "  Docker auto-created the bind-mount source as a directory." >&2
+        echo "  → Remove it (often root-owned; try in order):" >&2
+        echo "    rmdir WORKFLOW.md                    # if empty + parent is yours" >&2
+        echo "    sudo rm -rf WORKFLOW.md              # otherwise" >&2
+        echo "  Then re-copy a workflow file and re-run \`./scripts/dev.sh up\`." >&2
+        exit 1
+    fi
+
     $COMPOSE up -d --build
+
+    # Post-up health gate: the container can `Started` then exit within ~1s
+    # if the workflow load, DB open, or static-file mount fails. Surface the
+    # tail of logs immediately so the user doesn't have to hunt.
+    sleep 2
+    if [ -z "$($COMPOSE ps -q $SERVICE 2>/dev/null)" ]; then
+        echo
+        echo "ERROR: $SERVICE is not running. Tail of logs:" >&2
+        $COMPOSE logs --tail 50 $SERVICE >&2
+        exit 1
+    fi
+
     echo
     echo "→ Dev backend ready at http://localhost:7957"
     echo "→ Health:  curl -fsS http://localhost:7957/healthz"
