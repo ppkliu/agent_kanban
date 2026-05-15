@@ -219,4 +219,5 @@ export type WSMessage =
       to: RunStateStr;
     }
   | { type: "config_changed"; config: ConfigDTO }
-  | { type: "workflow_reloaded"; ok: boolean; config: ConfigDTO };
+  | { type: "workflow_reloaded"; ok: boolean; config: ConfigDTO }
+  | { type: "state_snapshot"; snapshot: StateSnapshot };
