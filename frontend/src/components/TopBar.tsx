@@ -4,6 +4,7 @@ import { api, setApiKey } from "../api/client";
 import { applyTheme, getStoredTheme, toggleTheme, type Theme } from "../theme";
 import AgentExplainer from "./AgentExplainer";
 import LLMSettings from "./LLMSettings";
+import ChatPanel from "./ChatPanel";
 
 export default function TopBar() {
   const status = useStore((s) => s.status);
@@ -17,6 +18,7 @@ export default function TopBar() {
   const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
   const [explainerOpen, setExplainerOpen] = useState(false);
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Keep <html data-theme="…"> in sync if `theme` is changed via the switcher.
   useEffect(() => {
@@ -174,6 +176,20 @@ export default function TopBar() {
         </button>
 
         <button
+          onClick={() => setChatOpen((v) => !v)}
+          className={`px-3 py-1 text-xs rounded transition border ${
+            chatOpen
+              ? "bg-emerald-500/20 text-emerald-300 border-emerald-700"
+              : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
+          }`}
+          title="Decompose a coding goal into kanban cards via the configured LLM"
+          aria-label="Toggle chat-to-cards panel"
+          aria-pressed={chatOpen}
+        >
+          💬 Chat
+        </button>
+
+        <button
           onClick={() => setLlmSettingsOpen(true)}
           className="px-3 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
           title="Configure the in-browser chat LLM endpoint (base_url / model / api_key)"
@@ -211,6 +227,7 @@ export default function TopBar() {
         open={llmSettingsOpen}
         onClose={() => setLlmSettingsOpen(false)}
       />
+      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
     </header>
   );
 }
