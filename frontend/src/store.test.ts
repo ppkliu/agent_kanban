@@ -132,8 +132,8 @@ describe("store", () => {
     });
   });
 
-  describe("fsm_transition / config_changed / workflow_reloaded", () => {
-    it("each triggers a state refresh", async () => {
+  describe("state_snapshot / config_changed / workflow_reloaded", () => {
+    it("init() does not fetch /state — WS state_snapshot replaces polling", () => {
       mockedApi.state.mockResolvedValue({
         tick_at: "",
         config: {},
@@ -141,23 +141,37 @@ describe("store", () => {
         totals: { active_workers: 0, released_today: 0 },
       });
       useStore.getState().init();
+      // Without state_snapshot from WS, snapshot stays null and no REST
+      // /state call has been issued. Polling is gone in favour of WS.
+      expect(mockedApi.state).toHaveBeenCalledTimes(0);
+      expect(useStore.getState().snapshot).toBeNull();
+    });
+
+    it("state_snapshot WS message overwrites snapshot in place", () => {
+      useStore.getState().init();
+      const snapshot = {
+        tick_at: "2026-05-15T00:00:00Z",
+        config: { runner_kind: "echo" },
+        columns: { pending: [], claimed: [], running: [], retry_queued: [], released: [] },
+        totals: { active_workers: 0, released_today: 0 },
+      };
+      pushWS({ type: "state_snapshot", snapshot });
+
+      const s = useStore.getState();
+      expect(s.snapshot).toEqual(snapshot);
+      // No REST call was triggered — pure WS reducer.
+      expect(mockedApi.state).toHaveBeenCalledTimes(0);
+    });
+
+    it("fsm_transition no longer triggers a REST refresh", async () => {
+      useStore.getState().init();
       mockedApi.state.mockClear();
-
       pushWS({ type: "fsm_transition", issue_id: "id-A", from: "claimed", to: "running" });
-      pushWS({ type: "config_changed", config: {} });
-      pushWS({ type: "workflow_reloaded", ok: true, config: {} });
-
       await Promise.resolve();
-      expect(mockedApi.state).toHaveBeenCalledTimes(3);
+      expect(mockedApi.state).toHaveBeenCalledTimes(0);
     });
 
     it("config_changed and workflow_reloaded set an info notice", () => {
-      mockedApi.state.mockResolvedValue({
-        tick_at: "",
-        config: {},
-        columns: { pending: [], claimed: [], running: [], retry_queued: [], released: [] },
-        totals: { active_workers: 0, released_today: 0 },
-      });
       useStore.getState().init();
 
       pushWS({ type: "config_changed", config: {} });

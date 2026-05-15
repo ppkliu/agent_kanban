@@ -69,7 +69,7 @@ function summarizeEvent(kind: string, data: Record<string, unknown>): string {
   }
 }
 
-export const useStore = create<Store>((set, get) => ({
+export const useStore = create<Store>((set) => ({
   status: "closed",
   snapshot: null,
   recentEvents: {},
@@ -109,27 +109,23 @@ export const useStore = create<Store>((set, get) => ({
             activity: newActivity,
           };
         });
-      } else if (m.type === "fsm_transition") {
-        // Optimistic refresh — the next /state poll will reconcile fully.
-        get().refresh();
+      } else if (m.type === "state_snapshot") {
+        // Server pushes a fresh snapshot on WS connect + after every
+        // state-mutating event (fsm_transition / config_changed /
+        // workflow_reloaded). No REST polling needed.
+        set({ snapshot: m.snapshot });
       } else if (m.type === "config_changed") {
-        get().refresh();
-        set({
-          notice: { kind: "info", text: "Config reloaded" },
-        });
+        set({ notice: { kind: "info", text: "Config reloaded" } });
       } else if (m.type === "workflow_reloaded") {
-        get().refresh();
-        set({
-          notice: { kind: "info", text: "WORKFLOW.md reloaded" },
-        });
+        set({ notice: { kind: "info", text: "WORKFLOW.md reloaded" } });
       }
+      // fsm_transition is informational here — the server follows it with a
+      // state_snapshot push that updates `snapshot` for us.
     });
     dashboardSocket.connect();
-    void get().refresh();
-    // Periodic snapshot poll as a safety net for missed transitions.
-    setInterval(() => {
-      void get().refresh();
-    }, 5000);
+    // No initial REST fetch, no setInterval polling — the WS push of
+    // state_snapshot on connect is the single source of truth. refresh()
+    // remains exported as a manual escape hatch.
   },
 
   refresh: async () => {
