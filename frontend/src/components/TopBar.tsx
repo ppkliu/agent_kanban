@@ -6,6 +6,7 @@ import { getStoredLLMConfig, type LLMConfig } from "../llmConfig";
 import AgentExplainer from "./AgentExplainer";
 import LLMSettings from "./LLMSettings";
 import ChatPanel from "./ChatPanel";
+import BackendRunnerSettings from "./BackendRunnerSettings";
 
 export default function TopBar() {
   const status = useStore((s) => s.status);
@@ -23,6 +24,7 @@ export default function TopBar() {
   const [llmConfig, setLlmConfig] = useState<LLMConfig>(() =>
     getStoredLLMConfig(),
   );
+  const [runnerSettingsOpen, setRunnerSettingsOpen] = useState(false);
 
   // Keep <html data-theme="…"> in sync if `theme` is changed via the switcher.
   useEffect(() => {
@@ -58,14 +60,18 @@ export default function TopBar() {
         </span>
         <span
           className="relative inline-flex items-center gap-1"
-          title="Backend runner — what the orchestrator dispatches per issue (from WORKFLOW.md)"
+          title="Backend runner — what the orchestrator dispatches per issue (from WORKFLOW.md). Click 🔧 Runner to change at runtime."
         >
-          runner:{" "}
-          <span className="text-zinc-200">
+          backend runner:{" "}
+          <button
+            onClick={() => setRunnerSettingsOpen(true)}
+            className="text-zinc-200 hover:text-emerald-300 underline-offset-2 hover:underline"
+            title="Open backend runner settings"
+          >
             {cfg?.runner_kind === "echo"
               ? "echo (no LLM)"
               : `${cfg?.runner_kind ?? "—"}${cfg?.runner_model ? ` · ${cfg.runner_model}` : ""}`}
-          </span>
+          </button>
           <button
             onClick={() => setExplainerOpen((v) => !v)}
             className="ml-1 w-4 h-4 rounded-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[10px] leading-3 text-zinc-300"
@@ -205,6 +211,15 @@ export default function TopBar() {
         </button>
 
         <button
+          onClick={() => setRunnerSettingsOpen(true)}
+          className="px-3 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+          title="Configure the backend runner that executes coding tasks (in-memory; restart reverts to WORKFLOW.md)"
+          aria-label="Open backend runner settings"
+        >
+          🔧 Runner
+        </button>
+
+        <button
           onClick={() => setLlmSettingsOpen(true)}
           className="px-3 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
           title="Configure the in-browser chat LLM endpoint (base_url / model / api_key)"
@@ -246,6 +261,10 @@ export default function TopBar() {
           // displayed provider+model matches the persisted config.
           setLlmConfig(getStoredLLMConfig());
         }}
+      />
+      <BackendRunnerSettings
+        open={runnerSettingsOpen}
+        onClose={() => setRunnerSettingsOpen(false)}
       />
       <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
     </header>
