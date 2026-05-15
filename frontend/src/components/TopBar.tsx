@@ -3,6 +3,7 @@ import { useStore } from "../store";
 import { api, setApiKey } from "../api/client";
 import { applyTheme, getStoredTheme, toggleTheme, type Theme } from "../theme";
 import AgentExplainer from "./AgentExplainer";
+import LLMSettings from "./LLMSettings";
 
 export default function TopBar() {
   const status = useStore((s) => s.status);
@@ -15,6 +16,7 @@ export default function TopBar() {
   const [editingMax, setEditingMax] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
   const [explainerOpen, setExplainerOpen] = useState(false);
+  const [llmSettingsOpen, setLlmSettingsOpen] = useState(false);
 
   // Keep <html data-theme="…"> in sync if `theme` is changed via the switcher.
   useEffect(() => {
@@ -172,6 +174,15 @@ export default function TopBar() {
         </button>
 
         <button
+          onClick={() => setLlmSettingsOpen(true)}
+          className="px-3 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+          title="Configure the in-browser chat LLM endpoint (base_url / model / api_key)"
+          aria-label="Open LLM endpoint settings"
+        >
+          🔌 LLM
+        </button>
+
+        <button
           onClick={() => setTheme((t) => toggleTheme(t))}
           className="px-2 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
           title={`Theme: ${theme} — click to switch`}
@@ -195,6 +206,11 @@ export default function TopBar() {
           ⚙
         </button>
       </div>
+
+      <LLMSettings
+        open={llmSettingsOpen}
+        onClose={() => setLlmSettingsOpen(false)}
+      />
     </header>
   );
 }
