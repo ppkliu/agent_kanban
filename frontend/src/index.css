@@ -43,3 +43,56 @@ body {
 *::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.16);
 }
+
+/* ---------- Light theme — inverse zinc→stone (warm-light) ----------------
+ *
+ * Tailwind v4 generates `bg-zinc-*` / `text-zinc-*` / `border-zinc-*` as
+ * static utility classes from `@theme`. We override them under
+ * `[data-theme="light"]` so existing components flip palette without a
+ * per-component refactor. Accent colours (rose / emerald / amber / blue)
+ * keep their hue — they read fine against both backgrounds.
+ *
+ * Stone is Tailwind's "warm gray". oklch values match Tailwind v4 defaults.
+ */
+
+[data-theme="light"] body {
+  background-color: oklch(0.985 0.001 106);
+  color: oklch(0.21 0.006 56);
+}
+
+/* Backgrounds — dark zinc maps to light stone */
+[data-theme="light"] .bg-zinc-950 { background-color: oklch(0.985 0.001 106); }
+[data-theme="light"] .bg-zinc-900 { background-color: oklch(0.97 0.001 106); }
+[data-theme="light"] .bg-zinc-800 { background-color: oklch(0.923 0.003 48.7); }
+[data-theme="light"] .bg-zinc-700 { background-color: oklch(0.869 0.005 56.4); }
+
+/* Background with alpha — slightly tinted surfaces (40% etc.) */
+[data-theme="light"] .bg-zinc-900\/40 { background-color: oklch(0.97 0.001 106 / 0.55); }
+[data-theme="light"] .bg-zinc-900\/50 { background-color: oklch(0.97 0.001 106 / 0.55); }
+[data-theme="light"] .bg-zinc-800\/50 { background-color: oklch(0.923 0.003 48.7 / 0.6); }
+[data-theme="light"] .bg-zinc-800\/40 { background-color: oklch(0.923 0.003 48.7 / 0.5); }
+[data-theme="light"] .bg-zinc-700\/40 { background-color: oklch(0.869 0.005 56.4 / 0.5); }
+
+/* Text — dark zinc maps to dark stone for legibility on light bg */
+[data-theme="light"] .text-zinc-100 { color: oklch(0.216 0.006 56); }
+[data-theme="light"] .text-zinc-200 { color: oklch(0.268 0.007 34.3); }
+[data-theme="light"] .text-zinc-300 { color: oklch(0.374 0.01 67.6); }
+[data-theme="light"] .text-zinc-400 { color: oklch(0.444 0.011 73.6); }
+[data-theme="light"] .text-zinc-500 { color: oklch(0.553 0.013 58.1); }
+[data-theme="light"] .text-zinc-600 { color: oklch(0.709 0.01 56.3); }
+
+/* Borders */
+[data-theme="light"] .border-zinc-800 { border-color: oklch(0.9 0.002 48); }
+[data-theme="light"] .border-zinc-700 { border-color: oklch(0.83 0.003 56); }
+
+/* Hover variants */
+[data-theme="light"] .hover\:bg-zinc-800:hover { background-color: oklch(0.923 0.003 48.7); }
+[data-theme="light"] .hover\:bg-zinc-700:hover { background-color: oklch(0.869 0.005 56.4); }
+
+/* Scrollbar inversion */
+[data-theme="light"] *::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+}
+[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.22);
+}
