@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { api, setApiKey } from "../api/client";
+import { applyTheme, getStoredTheme, toggleTheme, type Theme } from "../theme";
 
 export default function TopBar() {
   const status = useStore((s) => s.status);
@@ -11,6 +12,12 @@ export default function TopBar() {
   const refresh = useStore((s) => s.refresh);
 
   const [editingMax, setEditingMax] = useState(false);
+  const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
+
+  // Keep <html data-theme="…"> in sync if `theme` is changed via the switcher.
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   const cfg = snapshot?.config;
   const totals = snapshot?.totals;
@@ -144,6 +151,16 @@ export default function TopBar() {
           title="Edit WORKFLOW.md"
         >
           {wfOpen ? "← Board" : "📝 Workflow"}
+        </button>
+
+        <button
+          onClick={() => setTheme((t) => toggleTheme(t))}
+          className="px-2 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+          title={`Theme: ${theme} — click to switch`}
+          aria-label="Toggle light / dark theme"
+          aria-pressed={theme === "dark"}
+        >
+          {theme === "light" ? "☀" : "☾"}
         </button>
 
         <button
