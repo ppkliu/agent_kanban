@@ -48,6 +48,9 @@ CONVERSATION_HISTORY.md
 
 # ---------- Frontend ----------
 frontend/node_modules/
+# Stray root-level node_modules (e.g. when a tool runs npm from the repo
+# root by mistake — Vite caches under .vite there). Never source.
+/node_modules/
 frontend/dist/
 frontend/*.tsbuildinfo
 frontend/.vite/
