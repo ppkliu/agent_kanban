@@ -1,0 +1,67 @@
+# Dev-environment compose — Symphony backend in Docker, frontend on host.
+#
+# Production is `docker compose up -d` (uses docker-compose.yml + Dockerfile,
+# publishes :17957). This dev variant uses a separate Dockerfile that skips
+# the SPA build stage, bind-mounts the source code, and publishes the
+# canonical dev port :7957 so `cd frontend && npm run dev` proxies straight
+# in without any vite.config.ts edits.
+#
+# Bring it up:    ./scripts/dev.sh up
+# Stop it:        ./scripts/dev.sh down
+# Tail logs:      ./scripts/dev.sh logs
+# Run tests:      ./scripts/dev.sh test
+# Open a shell:   ./scripts/dev.sh shell
+#
+# See docs/guide/docker-dev-environment.md for the design rationale,
+# WSL2/macOS gotchas, and trade-offs vs Makefile / raw compose.
+
+services:
+  dashboard-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: symphony-dashboard:dev-env
+    container_name: symphony-dashboard-dev
+    ports:
+      # Map the canonical dev port (7957) on host so the existing
+      # frontend/vite.config.ts proxy (targeting 127.0.0.1:7957) just works.
+      - "7957:7957"
+    volumes:
+      # Live source — host edits are visible to the container immediately,
+      # but restart is required to re-import (no auto-reload by design).
+      - ./symphony_mvp:/app/symphony_mvp
+      - ./tests:/app/tests:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./examples:/app/examples:ro
+
+      # Runtime state — same layout as production compose.
+      - ./data:/app/data
+      - ./WORKFLOW.md:/app/WORKFLOW.md:ro
+      - workspaces:/app/workspaces
+    environment:
+      DASHBOARD_API_KEY: ${DASHBOARD_API_KEY:-}
+      OPENCODE_PROVIDER: ${OPENCODE_PROVIDER:-ollama}
+      OPENCODE_BASE_URL: ${OPENCODE_BASE_URL:-http://host.docker.internal:11434}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
+      # Keep host filesystem clean of __pycache__ churn from the bind mount.
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      # Force file-watching to use polling when bind mounts don't deliver
+      # native inotify events (WSL2 / Docker Desktop on macOS / Windows).
+      # Only consulted by tools that opt in via watchfiles; harmless otherwise.
+      WATCHFILES_FORCE_POLLING: "${WATCHFILES_FORCE_POLLING:-0}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:7957/healthz').status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    # Surface crashes loudly during development — don't auto-restart.
+    restart: "no"
+
+volumes:
+  # Named volume keeps per-issue agent workspaces out of the host tree, which
+  # prevents the frontend dev server from churning on workspace file changes.
+  workspaces:
