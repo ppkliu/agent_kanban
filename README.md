@@ -11,8 +11,8 @@
 > container for code generation). The default tracker is the project's own
 > SQLite-backed kanban — there is no required cloud or SaaS dependency. Local
 > LLMs are the primary runtime target; Claude Code CLI, Anthropic API, and
-> Codex are documented secondary backends. Pure Python 3.10+, **205 unit tests
-> green** (29 MVP core + 6 prompt-injection framing + 56 dashboard + 11 runner + 32 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 8 metrics + 22 Linear adapter + 1 ClaudeCLI override), spec-aligned React
+> Codex are documented secondary backends. Pure Python 3.10+, **212 unit tests
+> green** (29 MVP core + 6 prompt-injection framing + 56 dashboard + 11 runner + 37 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 8 metrics + 22 Linear adapter + 1 ClaudeCLI override + 2 D1 parent-gate), spec-aligned React
 > observatory, all four pluggable runners selectable from a single line of
 > `WORKFLOW.md`.
 
@@ -102,7 +102,7 @@ For development / CI without Docker:
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 205 tests = 29 MVP core + 6 prompt-injection + 56 dashboard + 11 runner + 32 tool API + 30 phase B helpers + 11 mode/override + 8 metrics + 22 Linear
+# 212 tests = 29 MVP core + 6 prompt-injection + 56 dashboard + 11 runner + 37 tool API + 30 phase B helpers + 11 mode/override + 8 metrics + 22 Linear + 2 D1 parent-gate
 .venv/bin/python -m pytest
 
 # self-contained end-to-end demo (no external API)
@@ -445,17 +445,17 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 205 tests
+├── tests/                     # 212 tests
 │   ├── conftest.py
 │   ├── test_workflow.py                # 13  (7 + 6 prompt-injection framing)
 │   ├── test_workspace.py               # 8
 │   ├── test_agent_runner.py            # 18  (15 + 3 allowed_tools override)
-│   ├── test_orchestrator.py            # 7
+│   ├── test_orchestrator.py            # 9  (7 + 2 D1 parent-failure dispatch gate)
 │   ├── test_dashboard_bridge.py        # 21  (12 + 5 idempotency + 4 submit_log)
 │   ├── test_dashboard_orchestrator.py  # 6
 │   ├── test_dashboard_server.py        # 12
 │   ├── test_dashboard_extras.py        # 17  (13 + 4 emergency stop)
-│   ├── test_tool_api.py                # 32  (Phase A/B + idempotency + rate limit + W3C trace_id)
+│   ├── test_tool_api.py                # 37  (Phase A/B + idempotency + rate limit + W3C trace_id + D1 subtask graph)
 │   ├── test_stage.py                   # 11  (Phase B stage translator)
 │   ├── test_task_result.py             # 10  (Phase B result derivation)
 │   ├── test_repo_inspect.py            # 9   (Phase B inspect_repo helpers)
@@ -472,7 +472,7 @@ agent_kanban/
 ## Run log
 ```bash
 $ .venv/bin/python -m pytest
-======================== 205 passed in 10.51s ========================
+======================== 212 passed in 10.51s ========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (3 workspaces created, marker files written)
