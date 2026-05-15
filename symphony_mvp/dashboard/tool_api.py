@@ -86,6 +86,31 @@ class ListReposOut(BaseModel):
     repos: list[RepoOut]
 
 
+class SubTaskSpec(BaseModel):
+    """One child of a Path A subtask decomposition. The caller supplies the
+    pre-decomposed list; Symphony creates 1 parent + N children with the
+    dependency graph stitched at issue-ingestion time."""
+
+    task: str = Field(min_length=1, max_length=16_000)
+    depends_on: Optional[list[int]] = Field(
+        default=None,
+        description=(
+            "Sibling indices (0-based) in the parent's `subtasks` array that "
+            "must reach a terminal state before this subtask is dispatched. "
+            "Only forward references are allowed (idx < this subtask's "
+            "position); the server translates indices to real task_ids."
+        ),
+    )
+    mode: Optional[Literal["plan", "build", "review"]] = Field(
+        default=None,
+        description="Per-child tool whitelist mode. Inherits parent default if unset.",
+    )
+    files_hint: Optional[list[str]] = Field(
+        default=None,
+        description="Per-child file focus list. Independent of the parent's hint.",
+    )
+
+
 class SubmitTaskIn(BaseModel):
     task: str = Field(
         min_length=1,
@@ -144,6 +169,18 @@ class SubmitTaskIn(BaseModel):
             "Issue.blocked_by and is consumed by the existing dispatch gate. "
             "Use this to express dependency order between subtasks under a "
             "shared parent."
+        ),
+    )
+    subtasks: Optional[list[SubTaskSpec]] = Field(
+        default=None,
+        max_length=50,
+        description=(
+            "Phase D2a Path A — caller-supplied decomposition. When set, the "
+            "outer `task` becomes the parent issue and each entry becomes a "
+            "child issue auto-linked with `parent:<id>` label and (if given) "
+            "translated sibling `depends_on`. A single `idempotency_key` "
+            "covers the whole batch — replays return the original parent id. "
+            "Cap: 50 subtasks per submission."
         ),
     )
 
@@ -589,13 +626,59 @@ def post_submit_coding_task(
                 headers={"Retry-After": str(window_seconds)},
             )
 
-    issue = _make_task_issue(body, trace_id=trace_id)
     tracker = state.orch.tracker
     if not hasattr(tracker, "add"):  # pragma: no cover — defence in depth
         raise HTTPException(
             status_code=500,
             detail="tracker does not support runtime task ingestion",
         )
+
+    # Phase D2a Path A — caller-supplied decomposition: create 1 parent issue
+    # + N children, all sharing one trace_id and linked via parent:<id> +
+    # translated sibling depends_on. Falls through to single-task path when
+    # `subtasks` is absent or empty.
+    if body.subtasks:
+        # Validate forward-only sibling references before we mutate any state.
+        for i, spec in enumerate(body.subtasks):
+            for idx in spec.depends_on or []:
+                if idx < 0 or idx >= i:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"subtasks[{i}].depends_on[{idx}] must reference "
+                            f"a prior sibling (0..{i - 1}); forward-only "
+                            f"references prevent cycles"
+                        ),
+                    )
+
+        parent_issue = _make_task_issue(body, trace_id=trace_id)
+        tracker.add(parent_issue)
+
+        child_task_ids: list[str] = []
+        for spec in body.subtasks:
+            depends_on_ids = [
+                child_task_ids[idx] for idx in (spec.depends_on or [])
+            ]
+            child_body = SubmitTaskIn(
+                task=spec.task,
+                repo=body.repo,
+                files_hint=spec.files_hint,
+                mode=spec.mode,
+                parent_task_id=parent_issue.id,
+                depends_on=depends_on_ids,
+            )
+            child_issue = _make_task_issue(child_body, trace_id=trace_id)
+            tracker.add(child_issue)
+            child_task_ids.append(child_issue.id)
+
+        if body.idempotency_key and hasattr(state.bridge, "record_idempotency_key"):
+            state.bridge.record_idempotency_key(body.idempotency_key, parent_issue.id)
+        if hasattr(state.bridge, "record_submit"):
+            state.bridge.record_submit(parent_issue.id)
+
+        return SubmitTaskOut(task_id=parent_issue.id, trace_id=trace_id)
+
+    issue = _make_task_issue(body, trace_id=trace_id)
     tracker.add(issue)
 
     # Persist the idempotency mapping AFTER the issue is in the tracker, so
