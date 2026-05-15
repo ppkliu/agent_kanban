@@ -857,9 +857,12 @@ def create_app(
 
     # Mount frontend dist if it exists. We resolve relative to the package so
     # `python -m symphony_mvp.dashboard` from any cwd still serves the SPA.
+    # Both the dist dir AND its assets/ subdir must exist — partial-build
+    # states (e.g. dev image with an empty frontend/dist placeholder) skip
+    # the mount entirely rather than crashing on missing assets/.
     pkg_root = Path(__file__).resolve().parents[2]
     dist_dir = pkg_root / "frontend" / "dist"
-    if dist_dir.is_dir():
+    if dist_dir.is_dir() and (dist_dir / "assets").is_dir():
         # SPA fallback: any unmatched GET goes to index.html so client-side
         # routing keeps working. /api/* and /healthz are matched first.
         index_html = dist_dir / "index.html"
