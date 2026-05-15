@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { api, setApiKey } from "../api/client";
 import { applyTheme, getStoredTheme, toggleTheme, type Theme } from "../theme";
+import { getStoredLLMConfig, type LLMConfig } from "../llmConfig";
 import AgentExplainer from "./AgentExplainer";
 import LLMSettings from "./LLMSettings";
 import ChatPanel from "./ChatPanel";
@@ -19,6 +20,9 @@ export default function TopBar() {
   const [explainerOpen, setExplainerOpen] = useState(false);
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [llmConfig, setLlmConfig] = useState<LLMConfig>(() =>
+    getStoredLLMConfig(),
+  );
 
   // Keep <html data-theme="…"> in sync if `theme` is changed via the switcher.
   useEffect(() => {
@@ -52,10 +56,15 @@ export default function TopBar() {
             <span className="text-zinc-500"> · {cfg.tracker_repo}</span>
           ) : null}
         </span>
-        <span className="relative inline-flex items-center gap-1">
+        <span
+          className="relative inline-flex items-center gap-1"
+          title="Backend runner — what the orchestrator dispatches per issue (from WORKFLOW.md)"
+        >
           runner:{" "}
           <span className="text-zinc-200">
-            {cfg?.runner_kind ?? "—"} · {cfg?.runner_model ?? ""}
+            {cfg?.runner_kind === "echo"
+              ? "echo (no LLM)"
+              : `${cfg?.runner_kind ?? "—"}${cfg?.runner_model ? ` · ${cfg.runner_model}` : ""}`}
           </span>
           <button
             onClick={() => setExplainerOpen((v) => !v)}
@@ -73,6 +82,12 @@ export default function TopBar() {
               onClose={() => setExplainerOpen(false)}
             />
           ) : null}
+        </span>
+        <span title="Browser-side chat LLM — what the 💬 chat panel calls to decompose goals into cards (from 🔌 LLM settings)">
+          chat LLM:{" "}
+          <span className="text-zinc-200">
+            {llmConfig.provider} · {llmConfig.model}
+          </span>
         </span>
         <span>tick: {cfg?.polling_interval_ms ?? "—"}ms</span>
       </div>
@@ -225,7 +240,12 @@ export default function TopBar() {
 
       <LLMSettings
         open={llmSettingsOpen}
-        onClose={() => setLlmSettingsOpen(false)}
+        onClose={() => {
+          setLlmSettingsOpen(false);
+          // Re-read the badge after the modal saves / cancels so the
+          // displayed provider+model matches the persisted config.
+          setLlmConfig(getStoredLLMConfig());
+        }}
       />
       <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
     </header>

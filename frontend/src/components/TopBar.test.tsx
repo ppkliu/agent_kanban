@@ -51,11 +51,14 @@ afterEach(() => {
 });
 
 describe("TopBar", () => {
-  it("shows tracker, runner, tick metadata", () => {
+  it("shows tracker, runner, chat LLM, tick metadata", () => {
     render(<TopBar />);
     expect(screen.getByText(/tracker:/)).toBeInTheDocument();
     expect(screen.getByText("memory")).toBeInTheDocument();
-    expect(screen.getByText(/echo · claude-opus-4-7/)).toBeInTheDocument();
+    // echo runner intentionally drops the stale `runner_model` from
+    // WORKFLOW.md (it has no LLM) so the badge stays coherent.
+    expect(screen.getByText(/echo \(no LLM\)/)).toBeInTheDocument();
+    expect(screen.getByText(/chat LLM:/)).toBeInTheDocument();
     expect(screen.getByText(/30000ms/)).toBeInTheDocument();
   });
 
