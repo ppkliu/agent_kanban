@@ -746,3 +746,123 @@ def test_idempotency_replay_returns_original_trace_id(app_ctx) -> None:
     assert r2.status_code == 200
     assert r2.json()["task_id"] == r1.json()["task_id"]
     assert r2.json()["trace_id"] == upstream_trace
+
+
+# --------------------------------------------------------------------------- #
+# Phase D1 — subtask graph foundation (parent_task_id + depends_on + list)    #
+# --------------------------------------------------------------------------- #
+
+def test_submit_with_parent_task_id_encodes_label(app_ctx) -> None:
+    """parent_task_id is written as a `parent:<id>` label so the orchestrator
+    can read it off issue.labels at dispatch time (same pattern as mode:/
+    trace:)."""
+    parent_resp = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "parent goal", "repo": "memory"},
+    )
+    parent_id = parent_resp.json()["task_id"]
+
+    child_resp = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "child step", "repo": "memory", "parent_task_id": parent_id},
+    )
+    assert child_resp.status_code == 200
+    child_id = child_resp.json()["task_id"]
+    child = next(i for i in app_ctx["tracker"].all() if i.id == child_id)
+    assert f"parent:{parent_id}" in child.labels
+
+
+def test_submit_with_depends_on_populates_blocked_by(app_ctx) -> None:
+    """depends_on maps straight to Issue.blocked_by — the existing dispatch
+    gate then enforces ordering with zero orchestrator changes."""
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "step C",
+            "repo": "memory",
+            "depends_on": ["tsk_aaa", "tsk_bbb"],
+        },
+    )
+    task_id = r.json()["task_id"]
+    issue = next(i for i in app_ctx["tracker"].all() if i.id == task_id)
+    assert issue.blocked_by == ["tsk_aaa", "tsk_bbb"]
+
+
+def test_list_tasks_filters_by_parent_task_id(app_ctx) -> None:
+    """Only children of one parent come back when parent_task_id is set."""
+    parent = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "P", "repo": "memory"},
+    ).json()["task_id"]
+    other_parent = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "P2", "repo": "memory"},
+    ).json()["task_id"]
+    for label in ("c1", "c2"):
+        app_ctx["client"].post(
+            "/api/v1/tools/submit_coding_task",
+            json={"task": label, "repo": "memory", "parent_task_id": parent},
+        )
+    app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "other-child", "repo": "memory", "parent_task_id": other_parent},
+    )
+
+    r = app_ctx["client"].post(
+        "/api/v1/tools/list_tasks", json={"parent_task_id": parent}
+    )
+    assert r.status_code == 200
+    tasks = r.json()["tasks"]
+    assert len(tasks) == 2
+    titles = {t["title"] for t in tasks}
+    assert titles == {"c1", "c2"}
+    for t in tasks:
+        assert t["parent_task_id"] == parent
+
+
+def test_list_tasks_filters_by_status(app_ctx) -> None:
+    """status filter only returns tasks whose derived status matches."""
+    for n in range(3):
+        app_ctx["client"].post(
+            "/api/v1/tools/submit_coding_task",
+            json={"task": f"queued-{n}", "repo": "memory"},
+        )
+    # All freshly-submitted tasks have status="pending" (no attempt yet).
+    r = app_ctx["client"].post(
+        "/api/v1/tools/list_tasks", json={"status": "pending"}
+    )
+    assert r.status_code == 200
+    assert len(r.json()["tasks"]) == 3
+    # No task should be in 'done' yet.
+    r2 = app_ctx["client"].post(
+        "/api/v1/tools/list_tasks", json={"status": "done"}
+    )
+    assert r2.json()["tasks"] == []
+
+
+def test_list_tasks_returns_summary_shape(app_ctx) -> None:
+    """The returned summaries carry the fields needed for kanban grouping:
+    task_id, title, status, parent_task_id, depends_on, mode, created_at."""
+    parent = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "kanban-parent", "repo": "memory"},
+    ).json()["task_id"]
+    app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "kanban-child",
+            "repo": "memory",
+            "parent_task_id": parent,
+            "depends_on": [parent],
+            "mode": "build",
+        },
+    )
+
+    r = app_ctx["client"].post("/api/v1/tools/list_tasks", json={})
+    rows = r.json()["tasks"]
+    child = next(t for t in rows if t["title"] == "kanban-child")
+    assert child["parent_task_id"] == parent
+    assert child["depends_on"] == [parent]
+    assert child["mode"] == "build"
+    assert child["status"] == "pending"
+    assert "created_at" in child
