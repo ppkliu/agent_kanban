@@ -182,6 +182,29 @@ export type WorkflowPutResult = WorkflowPutSuccess | WorkflowPutFailure;
 
 // ---------- WebSocket message envelope ----------
 
+// ---- Tool API (external — used by the in-browser chat panel) ------------
+// Mirrors symphony_mvp/dashboard/tool_api.py SubTaskSpec / SubmitTaskIn /
+// SubmitTaskOut. Only the fields the chat panel actually sends/reads are
+// modelled here — fully-typed schemas live in the backend's OpenAPI.
+
+export interface SubTaskSpecDTO {
+  task: string;
+  depends_on?: number[];
+}
+
+export interface SubmitCodingTaskBody {
+  task: string;
+  repo?: string;
+  subtasks?: SubTaskSpecDTO[];
+  idempotency_key?: string;
+}
+
+export interface SubmitCodingTaskResult {
+  task_id: string;
+  status: "pending";
+  trace_id: string;
+}
+
 export type WSMessage =
   | {
       type: "agent_event";

@@ -4,6 +4,8 @@ import type {
   FilePreview,
   IssueDetail,
   StateSnapshot,
+  SubmitCodingTaskBody,
+  SubmitCodingTaskResult,
   WorkflowResource,
   WorkflowPutResult,
   WorkspaceListing,
@@ -211,5 +213,21 @@ export const api = {
       return (await r.json()) as WorkflowPutResult;
     }
     return jsonOrThrow<WorkflowPutResult>(r);
+  },
+
+  /** Tool API — POST /api/v1/tools/submit_coding_task. The chat panel uses
+   * this with `subtasks=[...]` to fan out one parent + N children in a
+   * single round-trip (Phase D2a Path A). `repo` defaults to "memory" to
+   * match the in-memory tracker setup. */
+  async submitCodingTask(
+    body: SubmitCodingTaskBody,
+  ): Promise<SubmitCodingTaskResult> {
+    return jsonOrThrow<SubmitCodingTaskResult>(
+      await fetch(`${API_BASE}/tools/submit_coding_task`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ repo: "memory", ...body }),
+      }),
+    );
   },
 };
