@@ -594,5 +594,112 @@ class DashboardBridge:
         ]
 
 
+    # ------------------------------------------------------------------ #
+    # Project store (Phase E1)
+    # ------------------------------------------------------------------ #
+    DEFAULT_PROJECT_ID = "default"
+    DEFAULT_PROJECT_NAME = "Default project"
+
+    def ensure_default_project(self) -> str:
+        """Create the auto-default project on first call. Returns its id.
+
+        The Tool API calls this whenever a caller submits a task without
+        specifying `project_id`. Idempotent — repeated calls are a no-op.
+        """
+        self.create_project(
+            self.DEFAULT_PROJECT_ID, self.DEFAULT_PROJECT_NAME
+        )
+        return self.DEFAULT_PROJECT_ID
+
+    def create_project(self, project_id: str, name: str) -> dict[str, Any]:
+        """Insert a project row. Idempotent: if `project_id` already exists
+        the existing row is returned unchanged (name is NOT overwritten —
+        use `rename_project` for that)."""
+        ts = _now_iso()
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT OR IGNORE INTO projects (id, name, created_at) "
+                "VALUES (?, ?, ?)",
+                (project_id, name, ts),
+            )
+        got = self.get_project(project_id)
+        # get_project never returns None for an id we just inserted-or-found.
+        assert got is not None
+        return got
+
+    def get_project(self, project_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT id, name, created_at, archived_at FROM projects "
+                "WHERE id = ?",
+                (project_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "name": row[1],
+            "created_at": row[2],
+            "archived_at": row[3],
+        }
+
+    def list_projects(
+        self, *, include_archived: bool = False
+    ) -> list[dict[str, Any]]:
+        with self._lock:
+            if include_archived:
+                rows = self._db.execute(
+                    "SELECT id, name, created_at, archived_at FROM projects "
+                    "ORDER BY created_at ASC"
+                ).fetchall()
+            else:
+                rows = self._db.execute(
+                    "SELECT id, name, created_at, archived_at FROM projects "
+                    "WHERE archived_at IS NULL ORDER BY created_at ASC"
+                ).fetchall()
+        return [
+            {
+                "id": r[0],
+                "name": r[1],
+                "created_at": r[2],
+                "archived_at": r[3],
+            }
+            for r in rows
+        ]
+
+    def rename_project(self, project_id: str, name: str) -> bool:
+        """Rename a project. Returns True if a row was updated. False if
+        the project doesn't exist."""
+        with self._lock, self._db:
+            cur = self._db.execute(
+                "UPDATE projects SET name = ? WHERE id = ?",
+                (name, project_id),
+            )
+        return cur.rowcount > 0
+
+    def archive_project(self, project_id: str) -> bool:
+        """Mark the project as archived (Submit API rejects new tasks
+        under it). Returns True if a row was updated."""
+        ts = _now_iso()
+        with self._lock, self._db:
+            cur = self._db.execute(
+                "UPDATE projects SET archived_at = ? "
+                "WHERE id = ? AND archived_at IS NULL",
+                (ts, project_id),
+            )
+        return cur.rowcount > 0
+
+    def unarchive_project(self, project_id: str) -> bool:
+        """Clear the archived_at timestamp so the project accepts new
+        tasks again."""
+        with self._lock, self._db:
+            cur = self._db.execute(
+                "UPDATE projects SET archived_at = NULL "
+                "WHERE id = ? AND archived_at IS NOT NULL",
+                (project_id,),
+            )
+        return cur.rowcount > 0
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
