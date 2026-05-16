@@ -7,6 +7,7 @@ import AgentExplainer from "./AgentExplainer";
 import LLMSettings from "./LLMSettings";
 import ChatPanel from "./ChatPanel";
 import BackendRunnerSettings from "./BackendRunnerSettings";
+import ProjectSelector from "./ProjectSelector";
 
 export default function TopBar() {
   const status = useStore((s) => s.status);
@@ -49,6 +50,8 @@ export default function TopBar() {
         />
         <span className="font-semibold tracking-tight">Symphony</span>
       </div>
+
+      <ProjectSelector />
 
       <div className="text-xs text-zinc-400 flex items-center gap-3">
         <span>

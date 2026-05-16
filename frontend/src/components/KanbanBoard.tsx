@@ -15,6 +15,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useStore } from "../store";
+import { useProjectStore } from "../projectStore";
 import { api } from "../api/client";
 import IssueCard from "./IssueCard";
 import type { ColumnKey, KanbanEntry } from "../api/types";
@@ -34,7 +35,9 @@ const COLUMN_ORDER: { key: ColumnKey; label: string; tint: string }[] = [
 function applyFilters(
   entries: KanbanEntry[],
   filters: ReturnType<typeof useStore.getState>["filters"],
+  projectId: string | null,
 ): KanbanEntry[] {
+  const projectLabel = projectId ? `project:${projectId}` : null;
   return entries.filter((e) => {
     const text = filters.text.trim().toLowerCase();
     if (text) {
@@ -45,6 +48,19 @@ function applyFilters(
       return false;
     if (filters.label && !(e.issue.labels ?? []).includes(filters.label))
       return false;
+    if (projectLabel !== null) {
+      // Phase E2 — narrow to the selected project. Tasks predate this
+      // feature when they lack any `project:*` label; treat unlabeled
+      // tasks as belonging to `default` so legacy backlogs still show
+      // up when "default" is selected.
+      const labels = e.issue.labels ?? [];
+      const hasProj = labels.some((l) => l.startsWith("project:"));
+      if (hasProj) {
+        if (!labels.includes(projectLabel)) return false;
+      } else {
+        if (projectId !== "default") return false;
+      }
+    }
     return true;
   });
 }
@@ -69,6 +85,7 @@ export default function KanbanBoard() {
   const filters = useStore((s) => s.filters);
   const setNotice = useStore((s) => s.setNotice);
   const refresh = useStore((s) => s.refresh);
+  const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -78,10 +95,14 @@ export default function KanbanBoard() {
     if (!snapshot) return null;
     const out = {} as Record<ColumnKey, KanbanEntry[]>;
     for (const k of COLUMN_ORDER) {
-      out[k.key] = applyFilters(snapshot.columns[k.key] ?? [], filters);
+      out[k.key] = applyFilters(
+        snapshot.columns[k.key] ?? [],
+        filters,
+        selectedProjectId,
+      );
     }
     return out;
-  }, [snapshot, filters]);
+  }, [snapshot, filters, selectedProjectId]);
 
   if (!snapshot) {
     return (
