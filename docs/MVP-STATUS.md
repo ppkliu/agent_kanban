@@ -46,6 +46,7 @@ via `WORKFLOW.md`**.
 | Bilingual user manual + Tool API client demo | ✅ | `2fa23f1` `09dbd8c` `3754e0d` | open [user-manual.md](guide/user-manual.md) |
 | 5-column kanban + 6-tab issue drawer | ✅ | `2c9ef2f` and earlier | open `http://localhost:17957` |
 | Phase E1 multi-project foundation — projects SQLite table; `submit_coding_task` accepts `project_id` (auto-default); subtask fan-out inherits it; `list_tasks` filter; `/api/v1/projects` REST | ✅ | this batch | `pytest tests/test_dashboard_bridge.py tests/test_tool_api.py -k project` |
+| Phase E2 project selector in dashboard — TopBar dropdown, kanban filters by current project, chat panel submits under it, localStorage-persisted selection | ✅ | this batch | `cd frontend && npm test -- projectStore.test ProjectSelector.test` |
 | Self-contained test suite (no LLM / no GitHub required) | ✅ | 235 tests | `.venv/bin/python -m pytest` |
 | Bearer-token auth on REST + WebSocket | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
@@ -106,7 +107,7 @@ a regression against the MVP completion line.
 | Audit date | **2026-05-16** |
 | Commit | rolling — see `git log` for latest checkpoint |
 | Tests passing | **235** (`pytest -q`) |
-| Frontend tests | **45** (`npm test`) |
+| Frontend tests | **74** (`npm test`) |
 | Docker image | `symphony-dashboard:dev` (single-container, Phase 1) |
 | Tool API endpoints live | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task / list_tasks` |
 
