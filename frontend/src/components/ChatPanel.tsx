@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store";
+import { useProjectStore, effectiveSubmitProjectId } from "../projectStore";
 import { api } from "../api/client";
 import { getStoredLLMConfig } from "../llmConfig";
 import { chatCompletion } from "../llmClient";
@@ -25,6 +26,7 @@ type Phase = "idle" | "asking-llm" | "preview" | "submitting";
 export default function ChatPanel({ open, onClose }: Props) {
   const setNotice = useStore((s) => s.setNotice);
   const refresh = useStore((s) => s.refresh);
+  const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
 
   const [goal, setGoal] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -119,6 +121,7 @@ export default function ChatPanel({ open, onClose }: Props) {
       const r = await api.submitCodingTask({
         task: goal.trim(),
         subtasks,
+        project_id: effectiveSubmitProjectId(selectedProjectId),
       });
       setNotice({
         kind: "info",
