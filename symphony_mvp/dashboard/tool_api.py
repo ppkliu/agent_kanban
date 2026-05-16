@@ -283,6 +283,14 @@ class ListTasksIn(BaseModel):
             "or 'what failed' without polling each task_id individually."
         ),
     )
+    project_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Phase E1 — if set, only return tasks whose 'project:<id>' "
+            "label matches. Combine with `parent_task_id` to walk one "
+            "parent's children within a project."
+        ),
+    )
     limit: int = Field(
         default=100,
         ge=1,
@@ -296,6 +304,7 @@ class TaskSummaryOut(BaseModel):
     title: str
     status: TaskStatus
     parent_task_id: Optional[str] = None
+    project_id: Optional[str] = None
     depends_on: list[str] = Field(default_factory=list)
     mode: Optional[Literal["plan", "build", "review"]] = None
     created_at: datetime
@@ -911,6 +920,7 @@ def post_list_tasks(body: ListTasksIn, request: Request) -> ListTasksOut:
     summaries: list[TaskSummaryOut] = []
     parent_filter = body.parent_task_id
     status_filter = body.status
+    project_filter = body.project_id
     mode_prefix = MODE_LABEL_PREFIX
 
     for issue in tracker.all():
@@ -918,6 +928,9 @@ def post_list_tasks(body: ListTasksIn, request: Request) -> ListTasksOut:
             continue
         issue_parent = _extract_parent_id_from_labels(issue.labels)
         if parent_filter is not None and issue_parent != parent_filter:
+            continue
+        issue_project = _extract_project_id_from_labels(issue.labels)
+        if project_filter is not None and issue_project != project_filter:
             continue
         att = state.orch._attempts.get(issue.id)  # noqa: SLF001
         derived_status, _ = _derive_status(att)
@@ -934,6 +947,7 @@ def post_list_tasks(body: ListTasksIn, request: Request) -> ListTasksOut:
                 title=issue.title,
                 status=derived_status,
                 parent_task_id=issue_parent,
+                project_id=issue_project,
                 depends_on=list(issue.blocked_by),
                 mode=issue_mode,  # type: ignore[arg-type]
                 created_at=issue.created_at,
