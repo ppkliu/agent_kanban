@@ -273,3 +273,56 @@ def test_clear_old_submits_with_negative_retention_reaps_all(
     from datetime import datetime, timedelta, timezone
     since = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
     assert bridge.count_submits_since(since) == 0
+
+
+# --------------------------------------------------------------------------- #
+# Project store (Phase E1)                                                    #
+# --------------------------------------------------------------------------- #
+
+def test_ensure_default_project_is_idempotent(bridge: DashboardBridge) -> None:
+    pid1 = bridge.ensure_default_project()
+    pid2 = bridge.ensure_default_project()
+    assert pid1 == pid2 == "default"
+    proj = bridge.get_project("default")
+    assert proj is not None
+    assert proj["name"] == "Default project"
+    assert proj["archived_at"] is None
+
+
+def test_create_project_idempotent_on_same_id(bridge: DashboardBridge) -> None:
+    a = bridge.create_project("proj_a", "Alpha")
+    b = bridge.create_project("proj_a", "Beta-name-ignored")
+    # Name is NOT overwritten by a second create — use rename_project for that.
+    assert a == b
+    assert b["name"] == "Alpha"
+
+
+def test_list_projects_filters_archived(bridge: DashboardBridge) -> None:
+    bridge.create_project("p1", "One")
+    bridge.create_project("p2", "Two")
+    bridge.archive_project("p2")
+
+    active = bridge.list_projects()
+    assert [p["id"] for p in active] == ["p1"]
+
+    everything = bridge.list_projects(include_archived=True)
+    ids = [p["id"] for p in everything]
+    assert set(ids) == {"p1", "p2"}
+
+
+def test_rename_and_archive_lifecycle(bridge: DashboardBridge) -> None:
+    bridge.create_project("p1", "Old Name")
+    assert bridge.rename_project("p1", "New Name") is True
+    assert bridge.get_project("p1")["name"] == "New Name"
+
+    assert bridge.archive_project("p1") is True
+    assert bridge.get_project("p1")["archived_at"] is not None
+    # Second archive is a no-op (already archived)
+    assert bridge.archive_project("p1") is False
+
+    assert bridge.unarchive_project("p1") is True
+    assert bridge.get_project("p1")["archived_at"] is None
+
+    # Rename of an unknown project returns False, not raise
+    assert bridge.rename_project("nope", "x") is False
+    assert bridge.archive_project("nope") is False

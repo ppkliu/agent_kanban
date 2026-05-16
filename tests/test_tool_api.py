@@ -1017,3 +1017,175 @@ def test_subtasks_per_child_mode_only_on_child(app_ctx) -> None:
     assert not any(lbl.startswith("mode:") for lbl in parent.labels)
     assert "mode:review" in children[0].labels
     assert "mode:build" in children[1].labels
+
+
+# --------------------------------------------------------------------------- #
+# Phase E1 — project_id label + list_tasks filter + /api/v1/projects REST     #
+# --------------------------------------------------------------------------- #
+
+def test_submit_without_project_id_uses_default(app_ctx) -> None:
+    """submitting without project_id auto-attaches the `default` project so
+    existing single-tenant callers keep working unchanged."""
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "single tenant", "repo": "memory"},
+    )
+    assert r.status_code == 200
+    issue = next(i for i in app_ctx["tracker"].all() if i.id == r.json()["task_id"])
+    assert "project:default" in issue.labels
+
+
+def test_submit_with_project_id_encodes_label(app_ctx) -> None:
+    # Create a project first
+    pc = app_ctx["client"].post(
+        "/api/v1/projects", json={"name": "Alpha"}
+    )
+    assert pc.status_code == 200
+    pid = pc.json()["id"]
+
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "scoped", "repo": "memory", "project_id": pid},
+    )
+    assert r.status_code == 200
+    issue = next(i for i in app_ctx["tracker"].all() if i.id == r.json()["task_id"])
+    assert f"project:{pid}" in issue.labels
+
+
+def test_submit_with_unknown_project_id_returns_400(app_ctx) -> None:
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory", "project_id": "no-such-proj"},
+    )
+    assert r.status_code == 400
+    assert "unknown project_id" in r.json()["detail"]
+
+
+def test_submit_to_archived_project_returns_400(app_ctx) -> None:
+    pc = app_ctx["client"].post("/api/v1/projects", json={"name": "Stale"})
+    pid = pc.json()["id"]
+    # Archive it
+    pat = app_ctx["client"].patch(
+        f"/api/v1/projects/{pid}", json={"archived": True}
+    )
+    assert pat.status_code == 200
+
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "x", "repo": "memory", "project_id": pid},
+    )
+    assert r.status_code == 400
+    assert "archived" in r.json()["detail"]
+
+
+def test_subtasks_inherit_parent_project_id(app_ctx) -> None:
+    """A parent submitted with project_id propagates it to every child."""
+    pc = app_ctx["client"].post("/api/v1/projects", json={"name": "Graph"})
+    pid = pc.json()["id"]
+
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "umbrella",
+            "repo": "memory",
+            "project_id": pid,
+            "subtasks": [{"task": "a"}, {"task": "b"}],
+        },
+    )
+    parent_id = r.json()["task_id"]
+    children = [
+        i for i in app_ctx["tracker"].all() if f"parent:{parent_id}" in i.labels
+    ]
+    assert len(children) == 2
+    for child in children:
+        assert f"project:{pid}" in child.labels
+
+
+def test_list_tasks_filters_by_project_id(app_ctx) -> None:
+    """list_tasks ?project_id=X returns only that project's tasks. The
+    auto-default project's tasks do NOT leak into a specific project's filter."""
+    p_alpha = app_ctx["client"].post(
+        "/api/v1/projects", json={"name": "Alpha"}
+    ).json()["id"]
+    p_beta = app_ctx["client"].post(
+        "/api/v1/projects", json={"name": "Beta"}
+    ).json()["id"]
+
+    app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "alpha-1", "repo": "memory", "project_id": p_alpha},
+    )
+    app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "beta-1", "repo": "memory", "project_id": p_beta},
+    )
+    app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "default-1", "repo": "memory"},
+    )
+
+    r = app_ctx["client"].post(
+        "/api/v1/tools/list_tasks", json={"project_id": p_alpha}
+    )
+    titles = [t["title"] for t in r.json()["tasks"]]
+    assert titles == ["alpha-1"]
+    for t in r.json()["tasks"]:
+        assert t["project_id"] == p_alpha
+
+
+def test_projects_rest_list_and_rename(app_ctx) -> None:
+    r0 = app_ctx["client"].get("/api/v1/projects")
+    assert r0.status_code == 200
+    # default project auto-materialized on first GET
+    ids = [p["id"] for p in r0.json()["projects"]]
+    assert "default" in ids
+
+    new_id = app_ctx["client"].post(
+        "/api/v1/projects", json={"name": "Initial"}
+    ).json()["id"]
+    assert new_id.startswith("proj_")
+
+    # Rename
+    r2 = app_ctx["client"].patch(
+        f"/api/v1/projects/{new_id}", json={"name": "Renamed"}
+    )
+    assert r2.status_code == 200
+    assert r2.json()["project"]["name"] == "Renamed"
+
+    # Archive + list filters
+    r3 = app_ctx["client"].patch(
+        f"/api/v1/projects/{new_id}", json={"archived": True}
+    )
+    assert r3.status_code == 200
+    active = app_ctx["client"].get("/api/v1/projects").json()["projects"]
+    assert new_id not in [p["id"] for p in active]
+    all_p = app_ctx["client"].get(
+        "/api/v1/projects?include_archived=true"
+    ).json()["projects"]
+    assert new_id in [p["id"] for p in all_p]
+
+
+def test_projects_patch_unknown_returns_404(app_ctx) -> None:
+    r = app_ctx["client"].patch(
+        "/api/v1/projects/no-such", json={"name": "x"}
+    )
+    assert r.status_code == 404
+    assert "unknown project" in r.json()["detail"]
+
+
+def test_create_project_with_explicit_id(app_ctx) -> None:
+    r = app_ctx["client"].post(
+        "/api/v1/projects", json={"id": "custom-id-1", "name": "Custom"}
+    )
+    assert r.status_code == 200
+    assert r.json()["id"] == "custom-id-1"
+    assert r.json()["name"] == "Custom"
+
+
+def test_create_project_rejects_bad_id(app_ctx) -> None:
+    r = app_ctx["client"].post(
+        "/api/v1/projects",
+        json={"id": "has spaces and slashes/", "name": "Bad"},
+    )
+    # Pydantic pattern validator rejects → 422
+    assert r.status_code == 422
