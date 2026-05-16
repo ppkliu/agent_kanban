@@ -9,6 +9,12 @@ import {
   parseDecomposition,
   type SubTaskSpec,
 } from "../chatToTasks";
+import {
+  appendConversation,
+  listConversations,
+  newConversationId,
+  type ChatConversation,
+} from "../chatHistory";
 
 interface Props {
   open: boolean;
@@ -33,6 +39,28 @@ export default function ChatPanel({ open, onClose }: Props) {
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [rawLLMResponse, setRawLLMResponse] = useState<string>("");
   const abortRef = useRef<AbortController | null>(null);
+
+  // Per-project conversation history loaded from localStorage. Recomputed
+  // when the project selection changes so switching projects shows the
+  // right transcript list. `effectiveSubmitProjectId` resolves the
+  // null-selection ("All projects") case to "default".
+  const projectKey = effectiveSubmitProjectId(selectedProjectId);
+  const [history, setHistory] = useState<ChatConversation[]>(() =>
+    listConversations(projectKey),
+  );
+
+  // When the user switches project, refresh the history list and clear
+  // any in-progress prompt / preview so the new project's panel doesn't
+  // inherit a stale conversation from the previous one.
+  useEffect(() => {
+    setHistory(listConversations(projectKey));
+    setGoal("");
+    setPreview([]);
+    setRawLLMResponse("");
+    setPhase("idle");
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, [projectKey]);
 
   // Auto-clear preview when panel closes; abort any in-flight LLM call.
   useEffect(() => {
@@ -121,12 +149,23 @@ export default function ChatPanel({ open, onClose }: Props) {
       const r = await api.submitCodingTask({
         task: goal.trim(),
         subtasks,
-        project_id: effectiveSubmitProjectId(selectedProjectId),
+        project_id: projectKey,
       });
       setNotice({
         kind: "info",
         text: `Created ${subtasks.length} subtask(s) under ${r.task_id}`,
       });
+      // Persist this conversation under the active project. Switching
+      // project later restores its own list; this entry only shows up
+      // when the user is looking at *this* project.
+      const updated = appendConversation(projectKey, {
+        id: newConversationId(),
+        created_at: new Date().toISOString(),
+        goal: goal.trim(),
+        parent_task_id: r.task_id,
+        subtasks_created: subtasks.length,
+      });
+      setHistory(updated);
       void refresh();
       setGoal("");
       setPreview([]);
@@ -159,11 +198,38 @@ export default function ChatPanel({ open, onClose }: Props) {
 
       <div className="flex-1 min-h-0 overflow-auto px-4 py-3 text-xs">
         {phase === "idle" && preview.length === 0 ? (
-          <p className="text-zinc-500">
-            Describe a coding goal and I&apos;ll break it into subtasks via your
-            configured LLM (see the 🔌 LLM button to change endpoint). The
-            preview lets you uncheck anything before creating cards.
-          </p>
+          <>
+            <p className="text-zinc-500">
+              Describe a coding goal and I&apos;ll break it into subtasks via
+              your configured LLM (see the 🔌 LLM button to change endpoint).
+              The preview lets you uncheck anything before creating cards.
+            </p>
+            {history.length > 0 ? (
+              <section className="mt-3" aria-label="Recent conversations">
+                <header className="flex items-center justify-between text-zinc-500 uppercase tracking-wider text-[10px] mb-1">
+                  <span>Recent in this project</span>
+                  <span>{history.length}</span>
+                </header>
+                <ul className="space-y-1">
+                  {history.slice(0, 8).map((c) => (
+                    <li key={c.id}>
+                      <button
+                        onClick={() => setGoal(c.goal)}
+                        className="w-full text-left p-2 rounded border border-zinc-800 bg-zinc-800/40 hover:bg-zinc-800 transition"
+                        title="Click to prefill the input with this goal"
+                      >
+                        <div className="text-zinc-200 truncate">{c.goal}</div>
+                        <div className="text-zinc-500 text-[10px] font-mono truncate">
+                          {c.parent_task_id} · {c.subtasks_created} subtask
+                          {c.subtasks_created === 1 ? "" : "s"}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </>
         ) : phase === "asking-llm" ? (
           <p className="text-zinc-400">
             Asking the LLM to decompose… (Cancel to abort)
