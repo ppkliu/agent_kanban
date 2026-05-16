@@ -99,6 +99,22 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 CREATE INDEX IF NOT EXISTS idx_idempotency_expires
     ON idempotency_keys (expires_at);
 
+-- Projects (Phase E1) — logical grouping of tasks + chat conversations.
+-- A project is just an id + display name; the `project:<id>` label on each
+-- Issue carries the binding (mirrors how `parent:` / `trace:` / `mode:`
+-- labels work — no schema migration on Issues required). When no project
+-- is supplied at submit time the Tool API uses the auto-created `default`
+-- project, so single-tenant callers keep working unchanged.
+CREATE TABLE IF NOT EXISTS projects (
+    id           TEXT    PRIMARY KEY,
+    name         TEXT    NOT NULL,
+    created_at   TEXT    NOT NULL,
+    archived_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_archived
+    ON projects (archived_at);
+
 -- In-flight attempt snapshot — one row per non-released attempt.
 -- Lets the orchestrator hydrate _attempts on restart so retry queue + session
 -- continuity survive a process bounce. Released attempts are deleted from this
