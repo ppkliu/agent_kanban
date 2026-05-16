@@ -29,6 +29,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -203,6 +204,28 @@ class ConfigPatchIn(BaseModel):
 
 class WorkflowPutIn(BaseModel):
     content: str
+
+
+# Phase E1 — project management. A project is a logical grouping of tasks
+# bound to issues via the `project:<id>` label. New tasks auto-default to
+# the `default` project when none is specified. Archived projects reject
+# new task ingestion via the Tool API.
+class ProjectCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    id: Optional[str] = Field(
+        default=None,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+        description="Optional caller-supplied id. Server generates one if omitted.",
+    )
+
+
+class ProjectPatchIn(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    archived: Optional[bool] = Field(
+        default=None,
+        description="Set True to archive, False to un-archive. None = leave as-is.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -766,6 +789,55 @@ def put_workflow(body: WorkflowPutIn, request: Request) -> dict[str, Any]:
     return {
         "ok": True,
         "config": _config_dict(state.orch.workflow),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Projects (Phase E1) — multi-project foundation
+# ---------------------------------------------------------------------------
+
+
+@api_router.get("/projects")
+def list_projects(
+    request: Request,
+    include_archived: bool = Query(default=False),
+) -> dict[str, Any]:
+    state: DashboardAppState = request.app.state.symphony
+    state.bridge.ensure_default_project()
+    return {
+        "projects": state.bridge.list_projects(include_archived=include_archived),
+    }
+
+
+@api_router.post("/projects")
+def create_project(body: ProjectCreateIn, request: Request) -> dict[str, Any]:
+    state: DashboardAppState = request.app.state.symphony
+    pid = body.id or f"proj_{secrets.token_hex(6)}"
+    project = state.bridge.create_project(pid, body.name)
+    return project
+
+
+@api_router.patch("/projects/{project_id}")
+def patch_project(
+    project_id: str, body: ProjectPatchIn, request: Request
+) -> dict[str, Any]:
+    state: DashboardAppState = request.app.state.symphony
+    if state.bridge.get_project(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"unknown project {project_id!r}")
+    changed: dict[str, Any] = {}
+    if body.name is not None:
+        if state.bridge.rename_project(project_id, body.name):
+            changed["name"] = body.name
+    if body.archived is True:
+        if state.bridge.archive_project(project_id):
+            changed["archived"] = True
+    elif body.archived is False:
+        if state.bridge.unarchive_project(project_id):
+            changed["archived"] = False
+    return {
+        "ok": True,
+        "changed": changed,
+        "project": state.bridge.get_project(project_id),
     }
 
 
