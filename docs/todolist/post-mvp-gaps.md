@@ -114,7 +114,13 @@
     fan-out 繼承 parent 的 project_id;`list_tasks` 新增 `project_id` 過濾;
     新 REST 端點 `GET / POST /api/v1/projects`、`PATCH /api/v1/projects/{id}`。
     14 個新 test (4 bridge + 10 tool_api/REST)
-  - **E2 (待開)** — Frontend project selector + kanban 依當前 project 過濾
+  - **E2 (本批 commits,已落地)** — Frontend project selector:新
+    `projectStore.ts` (Zustand,localStorage-persisted 選擇)、`api.listProjects` /
+    `createProject` / `patchProject` helper、TopBar 左側 `ProjectSelector`
+    下拉(All / 每個 project / + New project…)、KanbanBoard 依當前 project
+    過濾(`project:<id>` label 比對,沒帶 label 的視為 default 以兼容舊資料);
+    ChatPanel 送出時帶當前 project_id;App.tsx 在 mount 時 refresh project
+    list。12 個新 frontend test(8 projectStore + 4 ProjectSelector)
   - **E3 (待開)** — Per-project chat 歷史 (localStorage,keyed by project_id)
   - **E4 (待開)** — Per-project event-trace view + WS `?filter=project:<id>` 擴充
   - **E5 (待開)** — 跨 project audit + archive UI
