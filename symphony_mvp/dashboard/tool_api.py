@@ -183,6 +183,18 @@ class SubmitTaskIn(BaseModel):
             "Cap: 50 subtasks per submission."
         ),
     )
+    project_id: Optional[str] = Field(
+        default=None,
+        max_length=128,
+        description=(
+            "Phase E1 multi-project — bind the task to a project so the "
+            "dashboard can filter / route by it. Encoded as a `project:<id>` "
+            "label on the Issue (same pattern as `parent:` / `trace:` / "
+            "`mode:`). Children inherit the parent's project. If omitted, "
+            "the auto-created `default` project is used so existing callers "
+            "keep working unchanged. Archived projects are rejected (400)."
+        ),
+    )
 
 
 class SubmitTaskOut(BaseModel):
@@ -333,6 +345,7 @@ _TRACEPARENT_RE = re.compile(
 )
 _TRACE_LABEL_PREFIX = "trace:"
 _PARENT_LABEL_PREFIX = "parent:"
+_PROJECT_LABEL_PREFIX = "project:"
 
 
 def _parse_or_generate_trace_id(traceparent: str | None) -> str:
@@ -356,6 +369,13 @@ def _extract_parent_id_from_labels(labels: list[str]) -> str | None:
     for label in labels:
         if label.startswith(_PARENT_LABEL_PREFIX):
             return label[len(_PARENT_LABEL_PREFIX):]
+    return None
+
+
+def _extract_project_id_from_labels(labels: list[str]) -> str | None:
+    for label in labels:
+        if label.startswith(_PROJECT_LABEL_PREFIX):
+            return label[len(_PROJECT_LABEL_PREFIX):]
     return None
 
 
@@ -443,6 +463,8 @@ def _make_task_issue(body: SubmitTaskIn, trace_id: str) -> Issue:
         labels.append(f"{MODE_LABEL_PREFIX}{body.mode}")
     if body.parent_task_id:
         labels.append(f"{_PARENT_LABEL_PREFIX}{body.parent_task_id}")
+    if body.project_id:
+        labels.append(f"{_PROJECT_LABEL_PREFIX}{body.project_id}")
     blocked_by = list(body.depends_on) if body.depends_on else []
     now = datetime.now(timezone.utc)
     return Issue(
@@ -584,6 +606,31 @@ def post_submit_coding_task(
             ),
         )
 
+    # Phase E1 — resolve project_id: explicit, or auto-default. Archived
+    # projects reject new tasks (400). The same project_id is propagated to
+    # child subtasks via the fan-out path so the whole graph shares it.
+    if hasattr(state.bridge, "ensure_default_project"):
+        if body.project_id is None:
+            body.project_id = state.bridge.ensure_default_project()
+        else:
+            proj = state.bridge.get_project(body.project_id)
+            if proj is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"unknown project_id {body.project_id!r}; "
+                        f"POST /api/v1/projects to create one first"
+                    ),
+                )
+            if proj.get("archived_at") is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"project {body.project_id!r} is archived and does "
+                        f"not accept new tasks"
+                    ),
+                )
+
     # Idempotency short-circuit: if the caller sent a key we've seen before
     # within TTL, return the original task_id instead of creating a duplicate.
     # Runs BEFORE the rate limit check — replaying a client retry shouldn't
@@ -666,6 +713,7 @@ def post_submit_coding_task(
                 mode=spec.mode,
                 parent_task_id=parent_issue.id,
                 depends_on=depends_on_ids,
+                project_id=body.project_id,
             )
             child_issue = _make_task_issue(child_body, trace_id=trace_id)
             tracker.add(child_issue)
