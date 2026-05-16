@@ -103,6 +103,21 @@
   - **D4 (待開)** — Periodic CHECKPOINT events 給 mid-flight 進度回報
   - **D5 (待開)** — Cross-task rollup summary (`get_workflow_result` aggregator)
   - 「定時 self-trigger」這條已由現有 30s polling loop 覆蓋,只剩文件補上
+- [ ] **Multi-project foundation (Phase E — 5-phase roadmap)** — 多 project /
+  conversation 管理。詳細 plan 在
+  `~/.claude/plans/w6-1-vitest-eager-meadow.md`。每個 E-phase 約 3–6 commit。
+  - **E1 (本批 commits,已落地)** — Project schema 基礎建設:新 `projects`
+    SQLite table (id / name / created_at / archived_at)、bridge 加
+    create / get / list / rename / archive / unarchive + `ensure_default_project`;
+    `submit_coding_task` 新增 `project_id` 欄位,encode 成 `project:<id>` issue
+    label,沒帶就掛 `default` project,archived project 拒收 (400);subtask
+    fan-out 繼承 parent 的 project_id;`list_tasks` 新增 `project_id` 過濾;
+    新 REST 端點 `GET / POST /api/v1/projects`、`PATCH /api/v1/projects/{id}`。
+    14 個新 test (4 bridge + 10 tool_api/REST)
+  - **E2 (待開)** — Frontend project selector + kanban 依當前 project 過濾
+  - **E3 (待開)** — Per-project chat 歷史 (localStorage,keyed by project_id)
+  - **E4 (待開)** — Per-project event-trace view + WS `?filter=project:<id>` 擴充
+  - **E5 (待開)** — 跨 project audit + archive UI
 - [ ] **Docker scaffolding Phase 2:雙容器爆炸半徑切分** — 把 `opencode` CLI
   從 dashboard 容器抽離到獨立的 `symphony-opencode` service
   - 動機:目前 dashboard 容器同時跑 FastAPI 跟 opencode 子行程,任意 tool call
