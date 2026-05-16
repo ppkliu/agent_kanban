@@ -1,7 +1,7 @@
 # Symphony MVP — 完成度狀態
 
 > English: [MVP-STATUS.md](MVP-STATUS.md)
-> 審核日期:**2026-05-15** · 測試:**218 個全綠** (滾動式 — 每次影響 MVP 的 commit 後重貼)
+> 審核日期:**2026-05-16** · 測試:**235 個全綠** (滾動式 — 每次影響 MVP 的 commit 後重貼)
 
 30 秒內回答「Symphony 的 MVP 框架做完了嗎?」想看深入文件就讀
 [使用說明書](guide/user-manual.zh-TW.md)、[`/api/v1/*` API reference](API-REFERENCE.zh-TW.md);
@@ -43,7 +43,8 @@ MVP 框架的契約:**對上游 agent 暴露 6 個語意化 tool、opt-in dashbo
 | 四種可替換 runner (echo / opencode / anthropic_api / claude_cli) | ✅ | `3b81799` `2ff85ba` | 改 `WORKFLOW.md` 的 `runner.kind` 重啟 |
 | 雙語使用說明書 + Tool API client demo | ✅ | `2fa23f1` `09dbd8c` `3754e0d` | 開 [user-manual.zh-TW.md](guide/user-manual.zh-TW.md) |
 | 5 欄 Kanban + 6 tab Issue Drawer | ✅ | `2c9ef2f` 之前 | 開 `http://localhost:17957` |
-| 自含測試套件 (不需 LLM / 不需 GitHub) | ✅ | 218 tests | `.venv/bin/python -m pytest` |
+| Phase E1 多 project 基礎建設 — 新 `projects` SQLite 表;`submit_coding_task` 收 `project_id` (沒帶自動 default);subtask fan-out 繼承;`list_tasks` 過濾;`/api/v1/projects` REST | ✅ | 本批 commits | `pytest tests/test_dashboard_bridge.py tests/test_tool_api.py -k project` |
+| 自含測試套件 (不需 LLM / 不需 GitHub) | ✅ | 235 tests | `.venv/bin/python -m pytest` |
 | REST + WebSocket Bearer 認證 | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
 **結論**:README 跟使用說明書裡的每個行為承諾,**都有 code 或 test 撐住**
@@ -76,7 +77,7 @@ MVP 框架的契約:**對上游 agent 暴露 6 個語意化 tool、opt-in dashbo
 # 1. Clone + 跑測試 (不需 LLM、不需 Docker)
 git clone <this-repo> && cd agent_kanban
 uv venv && uv pip install -e ".[dev,dashboard]"
-.venv/bin/python -m pytest                  # 預期:218 passed
+.venv/bin/python -m pytest                  # 預期:235 passed
 
 # 2. 拉起整套框架
 cp examples/WORKFLOW.docker.md WORKFLOW.md
@@ -99,9 +100,9 @@ open http://localhost:17957
 
 | | |
 |---|---|
-| 審核日期 | **2026-05-15** |
+| 審核日期 | **2026-05-16** |
 | Commit | 滾動式 — 最新 checkpoint 看 `git log` |
-| 測試通過數 | **218** (`pytest -q`) |
+| 測試通過數 | **235** (`pytest -q`) |
 | 前端測試 | **45** (`npm test`) |
 | Docker image | `symphony-dashboard:dev` (Phase 1 單容器) |
 | Tool API 上線端點 | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task / list_tasks` |

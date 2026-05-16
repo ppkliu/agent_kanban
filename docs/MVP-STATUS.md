@@ -1,7 +1,7 @@
 # Symphony MVP — Completion Status
 
 > 中文版: [MVP-STATUS.zh-TW.md](MVP-STATUS.zh-TW.md)
-> Audit date: **2026-05-15** · Tests: **218 passing** (rolling — re-stamp at each MVP-impacting commit)
+> Audit date: **2026-05-16** · Tests: **235 passing** (rolling — re-stamp at each MVP-impacting commit)
 
 A 30-second audit answering "is Symphony's MVP framework complete?"
 For deeper docs see the [user manual](guide/user-manual.md), the
@@ -45,7 +45,8 @@ via `WORKFLOW.md`**.
 | Four pluggable runners (echo / opencode / anthropic_api / claude_cli) | ✅ | `3b81799` `2ff85ba` | edit `WORKFLOW.md`'s `runner.kind` and restart |
 | Bilingual user manual + Tool API client demo | ✅ | `2fa23f1` `09dbd8c` `3754e0d` | open [user-manual.md](guide/user-manual.md) |
 | 5-column kanban + 6-tab issue drawer | ✅ | `2c9ef2f` and earlier | open `http://localhost:17957` |
-| Self-contained test suite (no LLM / no GitHub required) | ✅ | 218 tests | `.venv/bin/python -m pytest` |
+| Phase E1 multi-project foundation — projects SQLite table; `submit_coding_task` accepts `project_id` (auto-default); subtask fan-out inherits it; `list_tasks` filter; `/api/v1/projects` REST | ✅ | this batch | `pytest tests/test_dashboard_bridge.py tests/test_tool_api.py -k project` |
+| Self-contained test suite (no LLM / no GitHub required) | ✅ | 235 tests | `.venv/bin/python -m pytest` |
 | Bearer-token auth on REST + WebSocket | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
 **Net result**: every behavioural promise in the README and user manual
@@ -78,7 +79,7 @@ Tracked in detail in [post-mvp-gaps.md](todolist/post-mvp-gaps.md).
 # 1. Clone + sanity-check the test suite (no LLM, no Docker required)
 git clone <this-repo> && cd agent_kanban
 uv venv && uv pip install -e ".[dev,dashboard]"
-.venv/bin/python -m pytest                  # expect: 218 passed
+.venv/bin/python -m pytest                  # expect: 235 passed
 
 # 2. Bring the framework up
 cp examples/WORKFLOW.docker.md WORKFLOW.md
@@ -102,9 +103,9 @@ a regression against the MVP completion line.
 
 | | |
 |---|---|
-| Audit date | **2026-05-15** |
+| Audit date | **2026-05-16** |
 | Commit | rolling — see `git log` for latest checkpoint |
-| Tests passing | **218** (`pytest -q`) |
+| Tests passing | **235** (`pytest -q`) |
 | Frontend tests | **45** (`npm test`) |
 | Docker image | `symphony-dashboard:dev` (single-container, Phase 1) |
 | Tool API endpoints live | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task / list_tasks` |
