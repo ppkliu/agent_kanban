@@ -183,6 +183,19 @@ export type WorkflowPutResult = WorkflowPutSuccess | WorkflowPutFailure;
 
 // ---------- WebSocket message envelope ----------
 
+// ---- Projects (Phase E1 — multi-project) --------------------------------
+
+export interface ProjectDTO {
+  id: string;
+  name: string;
+  created_at: string;
+  archived_at: string | null;
+}
+
+export interface ListProjectsResult {
+  projects: ProjectDTO[];
+}
+
 // ---- Tool API (external — used by the in-browser chat panel) ------------
 // Mirrors symphony_mvp/dashboard/tool_api.py SubTaskSpec / SubmitTaskIn /
 // SubmitTaskOut. Only the fields the chat panel actually sends/reads are
@@ -198,6 +211,7 @@ export interface SubmitCodingTaskBody {
   repo?: string;
   subtasks?: SubTaskSpecDTO[];
   idempotency_key?: string;
+  project_id?: string;
 }
 
 export interface SubmitCodingTaskResult {

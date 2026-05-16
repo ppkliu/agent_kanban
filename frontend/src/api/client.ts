@@ -3,6 +3,8 @@ import type {
   EventsResult,
   FilePreview,
   IssueDetail,
+  ListProjectsResult,
+  ProjectDTO,
   StateSnapshot,
   SubmitCodingTaskBody,
   SubmitCodingTaskResult,
@@ -224,6 +226,47 @@ export const api = {
       return (await r.json()) as WorkflowPutResult;
     }
     return jsonOrThrow<WorkflowPutResult>(r);
+  },
+
+  // ---- Projects (Phase E1) -----------------------------------------------
+
+  async listProjects(
+    opts: { include_archived?: boolean } = {},
+  ): Promise<ListProjectsResult> {
+    const q = new URLSearchParams();
+    if (opts.include_archived) q.set("include_archived", "true");
+    const url = q.toString()
+      ? `${API_BASE}/projects?${q}`
+      : `${API_BASE}/projects`;
+    return jsonOrThrow<ListProjectsResult>(
+      await fetch(url, { headers: { ...authHeaders() } }),
+    );
+  },
+
+  async createProject(body: { name: string; id?: string }): Promise<ProjectDTO> {
+    return jsonOrThrow<ProjectDTO>(
+      await fetch(`${API_BASE}/projects`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify(body),
+      }),
+    );
+  },
+
+  async patchProject(
+    project_id: string,
+    patch: { name?: string; archived?: boolean },
+  ): Promise<{ ok: boolean; changed: Record<string, unknown>; project: ProjectDTO }> {
+    return jsonOrThrow(
+      await fetch(
+        `${API_BASE}/projects/${encodeURIComponent(project_id)}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json", ...authHeaders() },
+          body: JSON.stringify(patch),
+        },
+      ),
+    );
   },
 
   /** Tool API — POST /api/v1/tools/submit_coding_task. The chat panel uses
