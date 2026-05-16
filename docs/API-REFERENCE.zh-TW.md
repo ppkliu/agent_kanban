@@ -92,9 +92,13 @@ curl -X POST http://localhost:17957/api/v1/tools/get_task_result \
   terminal state,這個 task 才會被 dispatch,直接 map 到
   `Issue.blocked_by`,由既有的 dispatch gate 處理。
 - **`list_tasks`**:回傳 flat list 的 Tool API task,依 `created_at`
-  升冪排序。用 `parent_task_id` 走 child graph、用 `status` 篩 (例如
-  只看失敗或執行中)、`limit` 控制最多回幾筆 (預設 100,上限 500)。
-  只讀,不會起 agent。
+  升冪排序。用 `parent_task_id` 走 child graph、用 `project_id` 限定
+  單一專案、用 `status` 篩 (例如只看失敗或執行中)、`limit` 控制最多回幾
+  筆 (預設 100,上限 500)。只讀,不會起 agent。
+- **`project_id`** (Phase E1):把 task 綁到一個邏輯 project,讓 dashboard
+  能 group / filter。會被 encode 成 `project:<id>` issue label。Child
+  繼承 parent 的 project。沒帶會自動掛到 `default` project,既有單租
+  caller 不受影響。Archived project 會被拒絕 (400)。
 - **`subtasks`** (D2a Path A):一次 call 帶一 list 的 `SubTaskSpec`,
   Symphony 同時建立 **1 個 parent + N 個 child** issue (上限 50 個
   subtask)。每個 spec 帶 `task`、選填 `depends_on` (sibling 的 index,
@@ -145,8 +149,21 @@ curl -X POST http://localhost:17957/api/v1/tools/get_task_result \
 |---|---|---|
 | `POST` | `/api/v1/emergency_stop` | TopBar 紅色 kill switch — 一鍵 abort 所有 active worker (idempotent) |
 | `POST` | `/api/v1/priority` | 拖拉重排 Pending 欄 (priority override,不寫 tracker) |
-| `PATCH` | `/api/v1/config` | 白名單 runtime config:`max_concurrent_agents`、`polling_interval_ms` |
+| `PATCH` | `/api/v1/config` | 白名單 runtime config:`max_concurrent_agents`、`polling_interval_ms`、`runner_kind` / `runner_model` / `runner_provider` / `runner_base_url` / `runner_api_key` |
 | `PUT` | `/api/v1/workflow` | 熱載入 `WORKFLOW.md` (parse 失敗回 422 + `kept_previous: true`) |
+
+### Projects (Phase E1)
+
+| Method | 路徑 | 用途 |
+|---|---|---|
+| `GET` | `/api/v1/projects` | 列 project。`?include_archived=true` 把封存的也一起回 |
+| `POST` | `/api/v1/projects` | 建 project。Body:`{name, id?}` — 沒給 id 就 server 自動生 `proj_<hex>`;同 id 重複建是 idempotent |
+| `PATCH` | `/api/v1/projects/{project_id}` | 改名 / 封存。Body:`{name?, archived?: bool}` |
+
+Project 是多 project 架構的基礎:每個 Tool API task 都帶 `project:<id>`
+label,dashboard kanban 可依 project 過濾,Tool API 的
+`list_tasks ?project_id=` 走某 project 的 task graph。`submit_coding_task`
+沒帶 `project_id` 會自動掛到 `default` project,讓既有單租 caller 不受影響。
 
 ### 即時事件 (WebSocket)
 

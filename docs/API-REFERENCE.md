@@ -97,9 +97,14 @@ For a runnable end-to-end demo using only the stdlib see
   `Issue.blocked_by` and is consumed by the existing dispatch gate.
 - **`list_tasks`**: returns a flat list of Tool API tasks sorted by
   `created_at` ascending. Filter with `parent_task_id` (walk a child
-  graph) or `status` (scan failed-only / running-only). `limit` caps
-  the response (default 100, max 500). Read-only — does not spawn an
-  agent.
+  graph), `project_id` (scope to one project), or `status` (scan
+  failed-only / running-only). `limit` caps the response (default 100,
+  max 500). Read-only — does not spawn an agent.
+- **`project_id`** (Phase E1): bind a task to a logical project so the
+  dashboard can group / filter by it. Encoded as a `project:<id>` label
+  on the Issue. Children inherit the parent's project. Omitting it
+  auto-attaches the `default` project so single-tenant callers keep
+  working unchanged. Archived projects are rejected (400).
 - **`subtasks`** (D2a Path A): pass a list of `SubTaskSpec` and the call
   creates **one parent + N children** in one go (cap: 50 subtasks).
   Each spec carries `task`, optional `depends_on` (sibling indices —
@@ -152,8 +157,22 @@ control on the dashboard.
 |---|---|---|
 | `POST` | `/api/v1/emergency_stop` | TopBar kill switch — abort every active worker (idempotent) |
 | `POST` | `/api/v1/priority` | Drag-to-reorder the Pending column (priority overrides, not tracker writes) |
-| `PATCH` | `/api/v1/config` | Whitelist runtime config: `max_concurrent_agents`, `polling_interval_ms` |
+| `PATCH` | `/api/v1/config` | Whitelist runtime config: `max_concurrent_agents`, `polling_interval_ms`, `runner_kind` / `runner_model` / `runner_provider` / `runner_base_url` / `runner_api_key` |
 | `PUT` | `/api/v1/workflow` | Hot-reload `WORKFLOW.md` (returns 422 + `kept_previous: true` on parse failure) |
+
+### Projects (Phase E1)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/projects` | List projects. `?include_archived=true` to also return archived ones |
+| `POST` | `/api/v1/projects` | Create a project. Body: `{name, id?}` — server generates `proj_<hex>` if `id` is omitted; idempotent on existing id |
+| `PATCH` | `/api/v1/projects/{project_id}` | Rename and/or archive. Body: `{name?, archived?: bool}` |
+
+Projects are the multi-project foundation: every Tool API task carries a
+`project:<id>` label, the dashboard kanban filters by project, and the
+Tool API's `list_tasks ?project_id=` walks one project's task graph.
+Omitting `project_id` on `submit_coding_task` auto-attaches the
+`default` project so existing single-tenant callers keep working.
 
 ### Live event feed (WebSocket)
 
