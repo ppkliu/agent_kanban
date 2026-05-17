@@ -178,15 +178,21 @@ Omitting `project_id` on `submit_coding_task` auto-attaches the
 
 ```
 GET /api/v1/events?filter=issue:MT-1,MT-3
+GET /api/v1/events?filter=project:proj_abc
 Upgrade: websocket
 ```
 
 On connect, the server pushes the most recent 100 events for every
-non-terminal attempt, then streams live `agent_event` / `fsm_transition` /
-`config_changed` / `workflow_reloaded` messages.
+non-terminal attempt, a `state_snapshot` of the kanban, then streams live
+`agent_event` / `fsm_transition` / `config_changed` / `workflow_reloaded` /
+`state_snapshot` messages.
 
-Filter syntax: `?filter=issue:<id>,...` narrows to specific issues; omit
-the param to receive all.
+Filter syntax:
+- `?filter=issue:<id>,...` — restrict to specific issue ids.
+- `?filter=project:<id>` — restrict to all issues whose `project:<id>`
+  label matches (Phase E4). Legacy issues without a `project:` label are
+  treated as belonging to the `default` project.
+- omit the param to receive everything.
 
 ---
 

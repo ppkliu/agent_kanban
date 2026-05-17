@@ -169,14 +169,19 @@ label,dashboard kanban 可依 project 過濾,Tool API 的
 
 ```
 GET /api/v1/events?filter=issue:MT-1,MT-3
+GET /api/v1/events?filter=project:proj_abc
 Upgrade: websocket
 ```
 
-連線後 server 先推送每個非 terminal attempt 最近 100 筆事件,接著即時
-推送 `agent_event` / `fsm_transition` / `config_changed` /
-`workflow_reloaded`。
+連線後 server 先推送每個非 terminal attempt 最近 100 筆事件、一份
+`state_snapshot`,接著即時推送 `agent_event` / `fsm_transition` /
+`config_changed` / `workflow_reloaded` / `state_snapshot`。
 
-Filter 語法:`?filter=issue:<id>,...` 縮窄到特定 issue;省略則收全部。
+Filter 語法:
+- `?filter=issue:<id>,...` — 限定特定 issue。
+- `?filter=project:<id>` — 限定特定 project (Phase E4):比對 issue 的
+  `project:<id>` label;沒帶 label 的 legacy issue 視為 `default` project。
+- 省略 param 則收全部。
 
 ---
 
