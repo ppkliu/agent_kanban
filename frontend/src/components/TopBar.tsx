@@ -8,6 +8,7 @@ import LLMSettings from "./LLMSettings";
 import ChatPanel from "./ChatPanel";
 import BackendRunnerSettings from "./BackendRunnerSettings";
 import ProjectSelector from "./ProjectSelector";
+import TracePanel from "./TracePanel";
 
 export default function TopBar() {
   const status = useStore((s) => s.status);
@@ -26,6 +27,7 @@ export default function TopBar() {
     getStoredLLMConfig(),
   );
   const [runnerSettingsOpen, setRunnerSettingsOpen] = useState(false);
+  const [traceOpen, setTraceOpen] = useState(false);
 
   // Keep <html data-theme="…"> in sync if `theme` is changed via the switcher.
   useEffect(() => {
@@ -214,6 +216,20 @@ export default function TopBar() {
         </button>
 
         <button
+          onClick={() => setTraceOpen((v) => !v)}
+          className={`px-3 py-1 text-xs rounded transition border ${
+            traceOpen
+              ? "bg-emerald-500/20 text-emerald-300 border-emerald-700"
+              : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
+          }`}
+          title="Live agent event trace scoped to the current project"
+          aria-label="Toggle trace panel"
+          aria-pressed={traceOpen}
+        >
+          🔍 Trace
+        </button>
+
+        <button
           onClick={() => setRunnerSettingsOpen(true)}
           className="px-3 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
           title="Configure the backend runner that executes coding tasks (in-memory; restart reverts to WORKFLOW.md)"
@@ -270,6 +286,7 @@ export default function TopBar() {
         onClose={() => setRunnerSettingsOpen(false)}
       />
       <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
+      <TracePanel open={traceOpen} onClose={() => setTraceOpen(false)} />
     </header>
   );
 }
