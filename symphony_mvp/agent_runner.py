@@ -92,11 +92,24 @@ class EchoRunner:
     Useful for unit tests and end-to-end orchestrator demos without an LLM.
     Optionally writes a marker file in the workspace so tests can verify
     the agent ran with the correct cwd.
+
+    The ``final_message`` knob (Phase D2b) lets tests inject a known
+    assistant message (typically a JSON subtask array) so the
+    decomposition post-finalize hook has predictable input to parse. When
+    set, the marker-path event is suppressed and the supplied text is
+    emitted as the single ``MESSAGE_DELTA`` instead.
     """
 
-    def __init__(self, *, marker_filename: str = "agent_ran.txt", delay_s: float = 0.0) -> None:
+    def __init__(
+        self,
+        *,
+        marker_filename: str = "agent_ran.txt",
+        delay_s: float = 0.0,
+        final_message: str | None = None,
+    ) -> None:
         self.marker_filename = marker_filename
         self.delay_s = delay_s
+        self.final_message = final_message
 
     def run(
         self,
@@ -110,12 +123,17 @@ class EchoRunner:
         yield AgentEvent.now(AgentEventKind.TURN_STARTED, turn=1, session_id="echo-session")
         if self.delay_s:
             time.sleep(self.delay_s)
-        marker_path = os.path.join(workspace_path, self.marker_filename)
-        with open(marker_path, "w", encoding="utf-8") as f:
-            f.write(f"prompt_chars={len(prompt)}\n")
-        yield AgentEvent.now(
-            AgentEventKind.MESSAGE_DELTA, text=f"Wrote {marker_path}"
-        )
+        if self.final_message is None:
+            marker_path = os.path.join(workspace_path, self.marker_filename)
+            with open(marker_path, "w", encoding="utf-8") as f:
+                f.write(f"prompt_chars={len(prompt)}\n")
+            yield AgentEvent.now(
+                AgentEventKind.MESSAGE_DELTA, text=f"Wrote {marker_path}"
+            )
+        else:
+            yield AgentEvent.now(
+                AgentEventKind.MESSAGE_DELTA, text=self.final_message
+            )
         yield AgentEvent.now(
             AgentEventKind.TURN_COMPLETED, turn=1, tokens_used=0
         )
