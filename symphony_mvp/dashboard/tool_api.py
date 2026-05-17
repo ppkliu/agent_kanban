@@ -492,6 +492,48 @@ def _make_task_issue(body: SubmitTaskIn, trace_id: str) -> Issue:
     )
 
 
+def _fan_out_children(
+    *,
+    parent_id: str,
+    specs: list[dict[str, Any]],
+    tracker: Any,
+    trace_id: str,
+    project_id: str | None,
+    repo: str,
+) -> list[str]:
+    """Create N child issues under a parent, mirroring the Path A loop.
+
+    Each ``spec`` is a plain dict with ``task`` (str, required),
+    ``depends_on`` (list[int] of sibling indices, optional), ``mode``
+    (one of plan/build/review, optional), and ``files_hint`` (list[str],
+    optional). Sibling indices are translated to real task_ids using the
+    creation order. Children inherit the supplied ``trace_id`` and
+    ``project_id`` so per-project filtering keeps working downstream.
+
+    Returns the list of created child task_ids. Tracker.add is invoked
+    one child at a time so partial fan-out is observable if a later add
+    raises (the previous children stay in the tracker).
+    """
+    child_task_ids: list[str] = []
+    for spec in specs:
+        depends_on_ids = [
+            child_task_ids[idx] for idx in (spec.get("depends_on") or [])
+        ]
+        child_body = SubmitTaskIn(
+            task=spec["task"],
+            repo=repo,
+            files_hint=spec.get("files_hint"),
+            mode=spec.get("mode"),
+            parent_task_id=parent_id,
+            depends_on=depends_on_ids,
+            project_id=project_id,
+        )
+        child_issue = _make_task_issue(child_body, trace_id=trace_id)
+        tracker.add(child_issue)
+        child_task_ids.append(child_issue.id)
+    return child_task_ids
+
+
 def _tracker_kind(state: "DashboardAppState") -> str:
     return state.orch.workflow.config.tracker_kind
 
@@ -710,23 +752,22 @@ def post_submit_coding_task(
         parent_issue = _make_task_issue(body, trace_id=trace_id)
         tracker.add(parent_issue)
 
-        child_task_ids: list[str] = []
-        for spec in body.subtasks:
-            depends_on_ids = [
-                child_task_ids[idx] for idx in (spec.depends_on or [])
-            ]
-            child_body = SubmitTaskIn(
-                task=spec.task,
-                repo=body.repo,
-                files_hint=spec.files_hint,
-                mode=spec.mode,
-                parent_task_id=parent_issue.id,
-                depends_on=depends_on_ids,
-                project_id=body.project_id,
-            )
-            child_issue = _make_task_issue(child_body, trace_id=trace_id)
-            tracker.add(child_issue)
-            child_task_ids.append(child_issue.id)
+        _fan_out_children(
+            parent_id=parent_issue.id,
+            specs=[
+                {
+                    "task": s.task,
+                    "depends_on": s.depends_on,
+                    "mode": s.mode,
+                    "files_hint": s.files_hint,
+                }
+                for s in body.subtasks
+            ],
+            tracker=tracker,
+            trace_id=trace_id,
+            project_id=body.project_id,
+            repo=body.repo,
+        )
 
         if body.idempotency_key and hasattr(state.bridge, "record_idempotency_key"):
             state.bridge.record_idempotency_key(body.idempotency_key, parent_issue.id)
