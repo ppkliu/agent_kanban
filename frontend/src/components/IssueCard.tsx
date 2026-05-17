@@ -1,5 +1,6 @@
 import { memo, useState } from "react";
 import { useStore } from "../store";
+import { useProjectStore } from "../projectStore";
 import { api } from "../api/client";
 import type { KanbanEntry } from "../api/types";
 
@@ -92,6 +93,8 @@ function ContextMenu({
 
 function IssueCardInner({ entry }: Props) {
   const select = useStore((s) => s.selectIssue);
+  const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
+  const projects = useProjectStore((s) => s.projects);
   const [menuOpen, setMenuOpen] = useState(false);
   const att = entry.attempt;
   const issue = entry.issue;
@@ -100,6 +103,17 @@ function IssueCardInner({ entry }: Props) {
   const turnsTotal = useStore((s) => s.snapshot?.config.max_turns ?? 20);
   const turns = att?.turns_consumed ?? 0;
   const progress = Math.min(1, turns / turnsTotal);
+
+  // Cross-project audit chip — only shown when the user is viewing "All
+  // projects" (no filter active). Helps distinguish whose card is whose
+  // when the kanban shows tasks from multiple projects at once.
+  const projectLabel = issue.labels?.find((l) => l.startsWith("project:"));
+  const projectId = projectLabel
+    ? projectLabel.slice("project:".length)
+    : "default";
+  const showProjectChip = selectedProjectId === null;
+  const projectName =
+    projects.find((p) => p.id === projectId)?.name ?? projectId;
 
   const stateColor =
     att?.state === "running"
@@ -125,9 +139,19 @@ function IssueCardInner({ entry }: Props) {
         <span className="text-xs font-mono text-zinc-400">
           {issue.identifier}
         </span>
-        <span className="text-[10px] text-zinc-500">
-          p:{issue.priority ?? "—"}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {showProjectChip ? (
+            <span
+              className="text-[10px] bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-300 max-w-[120px] truncate"
+              title={`project: ${projectId}`}
+            >
+              📁 {projectName}
+            </span>
+          ) : null}
+          <span className="text-[10px] text-zinc-500">
+            p:{issue.priority ?? "—"}
+          </span>
+        </div>
       </div>
       <div className="text-sm leading-tight mt-1 line-clamp-2">
         {issue.title || "(no title)"}
