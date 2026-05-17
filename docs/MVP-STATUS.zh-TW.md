@@ -45,6 +45,7 @@ MVP 框架的契約:**對上游 agent 暴露 6 個語意化 tool、opt-in dashbo
 | 5 欄 Kanban + 6 tab Issue Drawer | ✅ | `2c9ef2f` 之前 | 開 `http://localhost:17957` |
 | Phase E1 多 project 基礎建設 — 新 `projects` SQLite 表;`submit_coding_task` 收 `project_id` (沒帶自動 default);subtask fan-out 繼承;`list_tasks` 過濾;`/api/v1/projects` REST | ✅ | 本批 commits | `pytest tests/test_dashboard_bridge.py tests/test_tool_api.py -k project` |
 | Phase E2 Dashboard project selector — TopBar 下拉選單、kanban 依當前 project 過濾、chat panel 跟著送、localStorage 記憶選擇 | ✅ | 本批 commits | `cd frontend && npm test -- projectStore.test ProjectSelector.test` |
+| Phase E3 Per-project chat 歷史 — localStorage 依 project_id 分流、ChatPanel 顯示 "Recent in this project"、點 entry 預填 textarea、切 project 自動 reset | ✅ | 本批 commits | `cd frontend && npm test -- chatHistory.test` |
 | 自含測試套件 (不需 LLM / 不需 GitHub) | ✅ | 235 tests | `.venv/bin/python -m pytest` |
 | REST + WebSocket Bearer 認證 | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
@@ -104,7 +105,7 @@ open http://localhost:17957
 | 審核日期 | **2026-05-16** |
 | Commit | 滾動式 — 最新 checkpoint 看 `git log` |
 | 測試通過數 | **235** (`pytest -q`) |
-| 前端測試 | **74** (`npm test`) |
+| 前端測試 | **82** (`npm test`) |
 | Docker image | `symphony-dashboard:dev` (Phase 1 單容器) |
 | Tool API 上線端點 | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task / list_tasks` |
 
