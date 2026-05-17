@@ -846,6 +846,123 @@ def patch_project(
 # ---------------------------------------------------------------------------
 
 
+_DECOMPOSE_PENDING_PREFIX = "decompose-pending:"
+
+
+def _make_decompose_hook(orch: Orchestrator, bridge: DashboardBridge):
+    """Transition subscriber that handles Phase D2b post-finalize.
+
+    Fires on every FSM transition; short-circuits unless the issue
+    carries a ``decompose-pending:`` label AND has just transitioned to
+    ``released``. On AGENT_FINISHED, fetches the parent's final
+    assistant message, parses it into ``SubtaskSpec[]``, and fans out
+    children via the Tool API's existing helper. On any failure (parent
+    crashed / parse error), emits an ``ERROR`` event so the operator
+    sees what happened. Idempotent via a per-(issue, attempt) guard.
+    """
+    from ..agent_runner import AgentEvent, AgentEventKind  # noqa: PLC0415
+    from ..models import TerminalReason  # noqa: PLC0415
+    from .decompose import parse_decomposition  # noqa: PLC0415
+    from .tool_api import (  # noqa: PLC0415
+        _extract_project_id_from_labels,
+        _extract_trace_id_from_labels,
+        _fan_out_children,
+    )
+
+    handled: set[str] = set()
+
+    def _on_transition(issue_id: str, _frm: str, to_state: str) -> None:
+        if to_state.lower() != "released":
+            return
+        tracker = orch.tracker
+        if not hasattr(tracker, "all"):
+            return
+        target = next(
+            (i for i in tracker.all() if i.id == issue_id), None
+        )
+        if target is None:
+            return
+        if not any(
+            l.startswith(_DECOMPOSE_PENDING_PREFIX) for l in target.labels
+        ):
+            return
+        att = orch._attempts.get(issue_id)  # noqa: SLF001
+        if att is None:
+            return
+        guard = f"{issue_id}#{att.attempt_number}"
+        if guard in handled:
+            return
+        handled.add(guard)
+
+        if att.terminal_reason != TerminalReason.AGENT_FINISHED:
+            bridge.on_event(
+                issue_id,
+                AgentEvent.now(
+                    AgentEventKind.ERROR,
+                    message=(
+                        f"decomposition skipped: parent ended in "
+                        f"{att.terminal_reason.value if att.terminal_reason else 'unknown'}"
+                    ),
+                ),
+            )
+            return
+
+        events = bridge.fetch_events(
+            issue_id, attempt_number=att.attempt_number, limit=2000
+        )
+        text_parts: list[str] = []
+        for ev in events:
+            if ev.get("kind") == "message_delta":
+                text_parts.append(str(ev.get("data", {}).get("text", "")))
+        text = "".join(text_parts)
+        specs, error = parse_decomposition(text)
+        if error or not specs:
+            bridge.on_event(
+                issue_id,
+                AgentEvent.now(
+                    AgentEventKind.ERROR,
+                    message=(
+                        f"decomposition parse failed: "
+                        f"{error or 'empty list'} (text_len={len(text)})"
+                    ),
+                ),
+            )
+            return
+
+        trace_id = _extract_trace_id_from_labels(target.labels)
+        project_id = _extract_project_id_from_labels(target.labels)
+        repo = "memory"  # Phase A still ties Tool API to the memory tracker.
+        try:
+            created = _fan_out_children(
+                parent_id=issue_id,
+                specs=[dict(s) for s in specs],
+                tracker=tracker,
+                trace_id=trace_id or "",
+                project_id=project_id,
+                repo=repo,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("decomposition fan-out failed")
+            bridge.on_event(
+                issue_id,
+                AgentEvent.now(
+                    AgentEventKind.ERROR,
+                    message=f"decomposition fan-out crashed: {e}",
+                ),
+            )
+            return
+
+        bridge.on_event(
+            issue_id,
+            AgentEvent.now(
+                AgentEventKind.MESSAGE_DELTA,
+                text=f"[decompose] created {len(created)} child task(s)",
+            ),
+        )
+
+    return _on_transition
+
+
 def _ws_authorized(websocket: WebSocket, api_key: Optional[str]) -> bool:
     if not api_key:
         return True
@@ -911,6 +1028,16 @@ def create_app(
     # See docs/design/coding-service-tool-api.md.
     from .tool_api import tool_router  # noqa: PLC0415 — keep import scoped to setup
     app.include_router(tool_router)
+
+    # Phase D2b — Symphony-side decomposition post-finalize hook. Fires
+    # when a parent issue carrying a `decompose-pending:` label reaches
+    # RELEASED, parses the parent's final assistant message into a
+    # subtask list, and creates the child issues via the Tool API's
+    # existing fan-out helper. Wired here so create_app() owns the full
+    # subscriber lifecycle.
+    bridge.add_transition_subscriber(
+        _make_decompose_hook(orchestrator, bridge)
+    )
 
     @app.websocket("/api/v1/events")
     async def events_ws(
