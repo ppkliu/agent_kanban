@@ -86,4 +86,90 @@ describe("ProjectSelector", () => {
     render(<ProjectSelector />);
     expect(screen.getByText("Alpha")).toBeInTheDocument();
   });
+
+  // ----- Phase E5: archive / unarchive controls -----
+
+  it("hides archived projects under a collapsible 'Archived' section", async () => {
+    seedStore({
+      projects: [
+        {
+          id: "default",
+          name: "Default project",
+          created_at: "x",
+          archived_at: null,
+        },
+        {
+          id: "proj_active",
+          name: "Active alpha",
+          created_at: "y",
+          archived_at: null,
+        },
+        {
+          id: "proj_old",
+          name: "Old beta",
+          created_at: "z",
+          archived_at: "2026-05-17T00:00:00Z",
+        },
+      ],
+    });
+    render(<ProjectSelector />);
+    await userEvent.click(screen.getByLabelText("Project selector"));
+
+    // Active sees both default + Active alpha
+    expect(screen.getByText("Active alpha")).toBeInTheDocument();
+    // Archived section header advertises the count
+    expect(screen.getByText("Archived (1)")).toBeInTheDocument();
+    // The archived project itself is hidden until expanded
+    expect(screen.queryByText("Old beta")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Archived (1)"));
+    expect(screen.getByText("Old beta")).toBeInTheDocument();
+  });
+
+  it("clicking the archive icon on a project sets it archived via the store", async () => {
+    const setArchivedSpy = vi.fn().mockResolvedValue(undefined);
+    seedStore({
+      projects: [
+        {
+          id: "proj_abc",
+          name: "Alpha",
+          created_at: "x",
+          archived_at: null,
+        },
+      ],
+    });
+    // Inject our spy without re-creating the store (would lose subscribers
+    // attached by other tests). Just override the `setArchived` action.
+    useProjectStore.setState({ setArchived: setArchivedSpy } as never);
+
+    // Mock window.confirm to auto-approve
+    const origConfirm = window.confirm;
+    window.confirm = vi.fn(() => true);
+    try {
+      render(<ProjectSelector />);
+      await userEvent.click(screen.getByLabelText("Project selector"));
+      await userEvent.click(screen.getByLabelText("Archive project Alpha"));
+      expect(setArchivedSpy).toHaveBeenCalledWith("proj_abc", true);
+    } finally {
+      window.confirm = origConfirm;
+    }
+  });
+
+  it("default project has no archive icon (can't be archived from UI)", async () => {
+    seedStore({
+      projects: [
+        {
+          id: "default",
+          name: "Default project",
+          created_at: "x",
+          archived_at: null,
+        },
+      ],
+    });
+    render(<ProjectSelector />);
+    await userEvent.click(screen.getByLabelText("Project selector"));
+    expect(
+      screen.queryByLabelText("Archive project Default project"),
+    ).not.toBeInTheDocument();
+  });
 });

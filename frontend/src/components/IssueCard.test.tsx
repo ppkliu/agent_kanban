@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import IssueCard from "./IssueCard";
 import { useStore } from "../store";
+import { useProjectStore } from "../projectStore";
 import type { AttemptDTO, KanbanEntry, RunStateStr } from "../api/types";
 
 vi.mock("../api/client", () => ({
@@ -143,5 +144,67 @@ describe("IssueCard", () => {
     });
     expect(screen.getByText("↻ Retry")).not.toBeDisabled();
     expect(screen.getByText("⏸ Pause")).toBeDisabled();
+  });
+
+  // ----- Phase E5: project chip in "All projects" mode -----
+
+  it("shows the project chip when viewing all projects", () => {
+    useProjectStore.setState({
+      projects: [
+        { id: "proj_a", name: "Alpha", created_at: "x", archived_at: null },
+      ],
+      selectedProjectId: null,
+      loading: false,
+      error: null,
+    });
+    render(
+      <IssueCard
+        entry={makeEntry({ labels: ["tool-api", "project:proj_a"] })}
+      />,
+    );
+    expect(screen.getByText("📁 Alpha")).toBeInTheDocument();
+  });
+
+  it("falls back to project id when the project name is not loaded yet", () => {
+    useProjectStore.setState({
+      projects: [],
+      selectedProjectId: null,
+      loading: false,
+      error: null,
+    });
+    render(
+      <IssueCard
+        entry={makeEntry({ labels: ["tool-api", "project:proj_x"] })}
+      />,
+    );
+    expect(screen.getByText("📁 proj_x")).toBeInTheDocument();
+  });
+
+  it("renders 'default' chip for legacy issues without a project label", () => {
+    useProjectStore.setState({
+      projects: [],
+      selectedProjectId: null,
+      loading: false,
+      error: null,
+    });
+    render(<IssueCard entry={makeEntry({ labels: [] })} />);
+    expect(screen.getByText("📁 default")).toBeInTheDocument();
+  });
+
+  it("hides the project chip when a specific project is selected", () => {
+    useProjectStore.setState({
+      projects: [
+        { id: "proj_a", name: "Alpha", created_at: "x", archived_at: null },
+      ],
+      selectedProjectId: "proj_a",
+      loading: false,
+      error: null,
+    });
+    render(
+      <IssueCard
+        entry={makeEntry({ labels: ["tool-api", "project:proj_a"] })}
+      />,
+    );
+    expect(screen.queryByText("📁 Alpha")).not.toBeInTheDocument();
   });
 });
