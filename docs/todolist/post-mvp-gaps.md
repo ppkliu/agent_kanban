@@ -134,7 +134,16 @@
     snapshot 建立 issue→project 對應,過濾現有 store 的 `activity` ring,
     含 "All projects" 暫時繞過。6 個新 test(2 backend WS filter + 4
     frontend TracePanel)
-  - **E5 (待開)** — 跨 project audit + archive UI
+  - **E5 (本批 commits,已落地)** — 跨 project audit + archive UI:
+    ProjectSelector 每筆 active project 加 📦 archive 按鈕(`default`
+    project 不可 archive,UI 直接擋掉);archived project 收進可摺疊
+    "Archived (N)" 區段,展開後每筆有 ↩ unarchive;projectStore 預設
+    一次撈全部(active + archived),UI 自己分組;IssueCard 在「All
+    projects」模式顯示 📁 chip 標示所屬 project,讓跨 project 看板
+    一眼分得出來。7 個新 frontend test (3 ProjectSelector archive +
+    4 IssueCard chip)
+  - 整個 Phase E roadmap 全綠;後續若還要 multi-tenant RBAC / 跨 project
+    task 依賴等進階能力,另起 Phase F roadmap
 - [ ] **Docker scaffolding Phase 2:雙容器爆炸半徑切分** — 把 `opencode` CLI
   從 dashboard 容器抽離到獨立的 `symphony-opencode` service
   - 動機:目前 dashboard 容器同時跑 FastAPI 跟 opencode 子行程,任意 tool call
