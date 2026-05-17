@@ -105,9 +105,15 @@ curl -X POST http://localhost:17957/api/v1/tools/get_task_result \
   只能 forward reference;server 會 rewrite 成真正的 task_id)、選填
   `mode`、選填 `files_hint`。整批共用一個 `idempotency_key`,replay
   回原 parent id,不會重複建 child。整個子圖共用一個 `trace_id`,跨
-  task 的 log correlation 維持指向同一個 trace。Path B (Symphony 自己
-  跑 plan-mode runner 拆解) 仍在 roadmap (D2b),目前還沒上;暫時請
-  上游 LLM 自己做拆解。
+  task 的 log correlation 維持指向同一個 trace。跟 `decompose=true`
+  互斥。
+- **`decompose`** (D2b Path B):設 `true` 讓 Symphony 自己做拆解。
+  Parent 會以 `mode=plan` + `decompose-pending:1` label 建立,description
+  前面預先 prepend 拆解 system prompt;plan-mode runner 跑完後,
+  post-finalize hook 把它最後的 assistant message 當 JSON subtask
+  array 解析,然後走跟 Path A 一樣的 fan-out 建立 children。要全域
+  關掉設環境變數 `SYMPHONY_DECOMPOSE_ENABLED=0`(會回 400 + 明確的
+  "decomposition disabled" 訊息)。跟 `subtasks=[...]` 互斥。
 - **`status`** (in `check_task_status`):`pending` / `running` / `done` /
   `failed` / `cancelled`。
 - **`stage`** (in `check_task_status`):`queued` / `exploring_codebase` /

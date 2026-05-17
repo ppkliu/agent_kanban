@@ -112,9 +112,17 @@ For a runnable end-to-end demo using only the stdlib see
   optional `mode`, and optional `files_hint`. A single `idempotency_key`
   covers the whole batch — replays return the original parent id with
   no duplicate children. All issues share one `trace_id` so log
-  correlation across the subgraph is preserved. Path B (Symphony-driven
-  decomposition via plan-mode runner) is on the roadmap (D2b) but not
-  yet shipped — for now, the upstream LLM does the decomposition.
+  correlation across the subgraph is preserved. Mutually exclusive with
+  `decompose=true`.
+- **`decompose`** (D2b Path B): set `true` to have Symphony do the
+  decomposition itself. The parent is created with `mode=plan` + a
+  `decompose-pending:1` label + the decomposition system prompt
+  prepended to the description; once the plan-mode runner finishes,
+  the post-finalize hook parses its final assistant message as a JSON
+  subtask array and creates the children via the same fan-out as Path A.
+  Disable globally with env `SYMPHONY_DECOMPOSE_ENABLED=0` (400 with
+  a clear "decomposition disabled" error). Mutually exclusive with
+  `subtasks=[...]`.
 - **`status`** (in `check_task_status`): `pending` / `running` / `done` /
   `failed` / `cancelled`.
 - **`stage`** (in `check_task_status`): `queued` / `exploring_codebase` /
