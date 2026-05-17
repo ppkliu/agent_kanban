@@ -94,10 +94,23 @@
     跟 1 個 trace_id。6 個新 test 覆蓋 parent+children linkage / sibling
     dep translation / trace_id inheritance / idempotency replay / invalid
     forward-ref / per-child mode label
-  - **D2b (待開)** — Decomposition Path B (`decompose=true`):caller 只給
-    一個 high-level goal,Symphony 自己跑一次 plan-mode runner 拆成
-    subtasks。需要 orchestrator 加 post-terminal hook (parent 跑完才能
-    parse output 建 child),所以從 D2 拆出來單獨做
+  - **D2b (本批 commits,已落地)** — Decomposition Path B (`decompose=true`):
+    `SubmitTaskIn` 加 `decompose: bool` 欄位,跟 `subtasks=[...]` 互斥;
+    parent 用 `mode=plan` + `decompose-pending:1` label 建,description
+    前 prepend `DECOMPOSITION_SYSTEM_PROMPT`(全域常數,跟前端
+    `chatToTasks.ts` 同步)讓 plan-mode runner 看到正確指令。Tool API
+    把 Path A 既有的 fan-out 迴圈抽出成 `_fan_out_children` 共用 helper;
+    新 `decompose.py` 含 fail-closed JSON parser(strip 程式碼圍欄、定位
+    `[...]`、validate 每 entry,boolean 被 `int` 親緣性 trap 故意 reject);
+    `server.py` 在 `create_app()` 註冊 transition subscriber,attempt
+    `RELEASED` + `AGENT_FINISHED` + 有 pending label → 從 event log 撈
+    message_delta 文字 → 解析 → 透過 `_fan_out_children` 建 children
+    (繼承 parent 的 `project:` + `trace:` label);失敗(parent crashed /
+    parse 失敗 / fan-out 例外)都會發 ERROR event 給 operator 看;
+    idempotent via `(issue_id, attempt_number)` 守門集合;`EchoRunner`
+    擴充 `final_message` 給測試注入固定 JSON;環境變數
+    `SYMPHONY_DECOMPOSE_ENABLED=0` kill switch 回 400。19 個新 test
+    (6 整合 + 13 parser 單元)
   - **D3 (待開)** — Human-intervention escalation:新 `TerminalReason.NEEDS_HUMAN`
     + runner 解析 `[HUMAN_REQUIRED]` marker + `resolve_human_block` endpoint
   - **D4 (待開)** — Periodic CHECKPOINT events 給 mid-flight 進度回報
