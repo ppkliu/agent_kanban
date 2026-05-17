@@ -350,3 +350,94 @@ def test_websocket_pushes_state_snapshot_on_connect(app_ctx) -> None:
             "retry_queued",
             "released",
         }
+
+
+def test_websocket_filter_narrows_by_project_id(app_ctx) -> None:
+    """Phase E4 — `?filter=project:<id>` only delivers agent_events for issues
+    whose `project:<id>` label matches. Tags issues at fixture time via
+    Issue.labels (mirrors how the Tool API auto-attaches the label)."""
+    from symphony_mvp.agent_runner import AgentEvent, AgentEventKind
+
+    tracker = app_ctx["tracker"]
+    bridge = app_ctx["bridge"]
+    client = app_ctx["client"]
+
+    # Tag the two pre-seeded issues into different projects.
+    tracker.add(
+        Issue(
+            id="id-PROJA",
+            identifier="PROJA",
+            title="alpha task",
+            description="",
+            priority=1,
+            state="open",
+            branch_name=None,
+            url="",
+            labels=["tool-api", "project:proj_a"],
+        )
+    )
+    tracker.add(
+        Issue(
+            id="id-PROJB",
+            identifier="PROJB",
+            title="beta task",
+            description="",
+            priority=1,
+            state="open",
+            branch_name=None,
+            url="",
+            labels=["tool-api", "project:proj_b"],
+        )
+    )
+
+    with client.websocket_connect(
+        "/api/v1/events?filter=project:proj_a"
+    ) as ws:
+        bridge.on_event(
+            "id-PROJB",
+            AgentEvent(
+                kind=AgentEventKind.MESSAGE_DELTA,
+                timestamp=datetime.now(timezone.utc),
+                data={"text": "from-b"},
+            ),
+        )
+        bridge.on_event(
+            "id-PROJA",
+            AgentEvent(
+                kind=AgentEventKind.MESSAGE_DELTA,
+                timestamp=datetime.now(timezone.utc),
+                data={"text": "from-a"},
+            ),
+        )
+        payload = _recv_until_type(ws, "agent_event")
+        # The B event must be filtered out — _recv_until_type would return
+        # the first agent_event it sees, which must be the A one.
+        assert payload["issue_id"] == "id-PROJA"
+        assert payload["event"]["data"]["text"] == "from-a"
+
+
+def test_websocket_filter_project_default_includes_untagged_legacy(
+    app_ctx,
+) -> None:
+    """Legacy issues with no `project:` label show up under the default
+    project's trace — so multi-project rollout doesn't hide pre-E1 tasks."""
+    from symphony_mvp.agent_runner import AgentEvent, AgentEventKind
+
+    bridge = app_ctx["bridge"]
+    client = app_ctx["client"]
+    # The fixture pre-seeds MT-1 / MT-2 without any project label.
+
+    with client.websocket_connect(
+        "/api/v1/events?filter=project:default"
+    ) as ws:
+        bridge.on_event(
+            "id-MT-1",
+            AgentEvent(
+                kind=AgentEventKind.MESSAGE_DELTA,
+                timestamp=datetime.now(timezone.utc),
+                data={"text": "legacy"},
+            ),
+        )
+        payload = _recv_until_type(ws, "agent_event")
+        assert payload["issue_id"] == "id-MT-1"
+        assert payload["event"]["data"]["text"] == "legacy"
