@@ -121,7 +121,12 @@
     過濾(`project:<id>` label 比對,沒帶 label 的視為 default 以兼容舊資料);
     ChatPanel 送出時帶當前 project_id;App.tsx 在 mount 時 refresh project
     list。12 個新 frontend test(8 projectStore + 4 ProjectSelector)
-  - **E3 (待開)** — Per-project chat 歷史 (localStorage,keyed by project_id)
+  - **E3 (本批 commits,已落地)** — Per-project chat 歷史:新
+    `chatHistory.ts` module(localStorage keyed by project_id,FIFO 20 條
+    上限);ChatPanel 在送出後寫入當前 project 的歷史,idle 狀態顯示
+    "Recent in this project" 清單,點 entry 預填 textarea;切 project 時
+    ChatPanel 自動 reset prompt / preview / phase 並重讀新 project 的
+    歷史。8 個新 frontend test (chatHistory 單元測試)
   - **E4 (待開)** — Per-project event-trace view + WS `?filter=project:<id>` 擴充
   - **E5 (待開)** — 跨 project audit + archive UI
 - [ ] **Docker scaffolding Phase 2:雙容器爆炸半徑切分** — 把 `opencode` CLI
