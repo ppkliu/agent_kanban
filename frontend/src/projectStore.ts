@@ -55,7 +55,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   refresh: async () => {
     set({ loading: true, error: null });
     try {
-      const r = await api.listProjects();
+      // Always load active + archived so the selector can offer an
+      // "Archived (N)" affordance + unarchive. UI filters by
+      // `archived_at` for the default view.
+      const r = await api.listProjects({ include_archived: true });
       set({ projects: r.projects, loading: false });
     } catch (e) {
       set({ loading: false, error: (e as Error).message });
