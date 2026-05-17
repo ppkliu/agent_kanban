@@ -1,7 +1,7 @@
 # Symphony MVP — 完成度狀態
 
 > English: [MVP-STATUS.md](MVP-STATUS.md)
-> 審核日期:**2026-05-16** · 測試:**235 個全綠** (滾動式 — 每次影響 MVP 的 commit 後重貼)
+> 審核日期:**2026-05-17** · 測試:**237 個全綠** (滾動式 — 每次影響 MVP 的 commit 後重貼)
 
 30 秒內回答「Symphony 的 MVP 框架做完了嗎?」想看深入文件就讀
 [使用說明書](guide/user-manual.zh-TW.md)、[`/api/v1/*` API reference](API-REFERENCE.zh-TW.md);
@@ -46,7 +46,8 @@ MVP 框架的契約:**對上游 agent 暴露 6 個語意化 tool、opt-in dashbo
 | Phase E1 多 project 基礎建設 — 新 `projects` SQLite 表;`submit_coding_task` 收 `project_id` (沒帶自動 default);subtask fan-out 繼承;`list_tasks` 過濾;`/api/v1/projects` REST | ✅ | 本批 commits | `pytest tests/test_dashboard_bridge.py tests/test_tool_api.py -k project` |
 | Phase E2 Dashboard project selector — TopBar 下拉選單、kanban 依當前 project 過濾、chat panel 跟著送、localStorage 記憶選擇 | ✅ | 本批 commits | `cd frontend && npm test -- projectStore.test ProjectSelector.test` |
 | Phase E3 Per-project chat 歷史 — localStorage 依 project_id 分流、ChatPanel 顯示 "Recent in this project"、點 entry 預填 textarea、切 project 自動 reset | ✅ | 本批 commits | `cd frontend && npm test -- chatHistory.test` |
-| 自含測試套件 (不需 LLM / 不需 GitHub) | ✅ | 235 tests | `.venv/bin/python -m pytest` |
+| Phase E4 Per-project trace 監控 — 後端 WS `?filter=project:<id>` (legacy issue 退到 `default`);TopBar 新 `🔍 Trace` 開浮動面板,客戶端依 snapshot 過濾 activity ring | ✅ | 本批 commits | `pytest tests/test_dashboard_server.py -k project_filter; cd frontend && npm test -- TracePanel.test` |
+| 自含測試套件 (不需 LLM / 不需 GitHub) | ✅ | 237 tests | `.venv/bin/python -m pytest` |
 | REST + WebSocket Bearer 認證 | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
 **結論**:README 跟使用說明書裡的每個行為承諾,**都有 code 或 test 撐住**
@@ -79,7 +80,7 @@ MVP 框架的契約:**對上游 agent 暴露 6 個語意化 tool、opt-in dashbo
 # 1. Clone + 跑測試 (不需 LLM、不需 Docker)
 git clone <this-repo> && cd agent_kanban
 uv venv && uv pip install -e ".[dev,dashboard]"
-.venv/bin/python -m pytest                  # 預期:235 passed
+.venv/bin/python -m pytest                  # 預期:237 passed
 
 # 2. 拉起整套框架
 cp examples/WORKFLOW.docker.md WORKFLOW.md
@@ -102,10 +103,10 @@ open http://localhost:17957
 
 | | |
 |---|---|
-| 審核日期 | **2026-05-16** |
+| 審核日期 | **2026-05-17** |
 | Commit | 滾動式 — 最新 checkpoint 看 `git log` |
-| 測試通過數 | **235** (`pytest -q`) |
-| 前端測試 | **82** (`npm test`) |
+| 測試通過數 | **237** (`pytest -q`) |
+| 前端測試 | **86** (`npm test`) |
 | Docker image | `symphony-dashboard:dev` (Phase 1 單容器) |
 | Tool API 上線端點 | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task / list_tasks` |
 

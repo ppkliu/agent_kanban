@@ -1,7 +1,7 @@
 # Symphony MVP — Completion Status
 
 > 中文版: [MVP-STATUS.zh-TW.md](MVP-STATUS.zh-TW.md)
-> Audit date: **2026-05-16** · Tests: **235 passing** (rolling — re-stamp at each MVP-impacting commit)
+> Audit date: **2026-05-17** · Tests: **237 passing** (rolling — re-stamp at each MVP-impacting commit)
 
 A 30-second audit answering "is Symphony's MVP framework complete?"
 For deeper docs see the [user manual](guide/user-manual.md), the
@@ -48,7 +48,8 @@ via `WORKFLOW.md`**.
 | Phase E1 multi-project foundation — projects SQLite table; `submit_coding_task` accepts `project_id` (auto-default); subtask fan-out inherits it; `list_tasks` filter; `/api/v1/projects` REST | ✅ | this batch | `pytest tests/test_dashboard_bridge.py tests/test_tool_api.py -k project` |
 | Phase E2 project selector in dashboard — TopBar dropdown, kanban filters by current project, chat panel submits under it, localStorage-persisted selection | ✅ | this batch | `cd frontend && npm test -- projectStore.test ProjectSelector.test` |
 | Phase E3 per-project chat history — localStorage transcripts keyed by project_id; chat panel surfaces "Recent in this project" + click-to-prefill; resets on project switch | ✅ | this batch | `cd frontend && npm test -- chatHistory.test` |
-| Self-contained test suite (no LLM / no GitHub required) | ✅ | 235 tests | `.venv/bin/python -m pytest` |
+| Phase E4 per-project trace view — backend WS `?filter=project:<id>` (legacy issues fall back to `default`); `🔍 Trace` panel in TopBar filters store activity by current project | ✅ | this batch | `pytest tests/test_dashboard_server.py -k project_filter; cd frontend && npm test -- TracePanel.test` |
+| Self-contained test suite (no LLM / no GitHub required) | ✅ | 237 tests | `.venv/bin/python -m pytest` |
 | Bearer-token auth on REST + WebSocket | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
 **Net result**: every behavioural promise in the README and user manual
@@ -81,7 +82,7 @@ Tracked in detail in [post-mvp-gaps.md](todolist/post-mvp-gaps.md).
 # 1. Clone + sanity-check the test suite (no LLM, no Docker required)
 git clone <this-repo> && cd agent_kanban
 uv venv && uv pip install -e ".[dev,dashboard]"
-.venv/bin/python -m pytest                  # expect: 235 passed
+.venv/bin/python -m pytest                  # expect: 237 passed
 
 # 2. Bring the framework up
 cp examples/WORKFLOW.docker.md WORKFLOW.md
@@ -105,10 +106,10 @@ a regression against the MVP completion line.
 
 | | |
 |---|---|
-| Audit date | **2026-05-16** |
+| Audit date | **2026-05-17** |
 | Commit | rolling — see `git log` for latest checkpoint |
-| Tests passing | **235** (`pytest -q`) |
-| Frontend tests | **82** (`npm test`) |
+| Tests passing | **237** (`pytest -q`) |
+| Frontend tests | **86** (`npm test`) |
 | Docker image | `symphony-dashboard:dev` (single-container, Phase 1) |
 | Tool API endpoints live | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task / list_tasks` |
 
