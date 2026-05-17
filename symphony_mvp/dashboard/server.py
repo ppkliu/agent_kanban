@@ -922,16 +922,54 @@ def create_app(
             return
         await websocket.accept()
 
-        # Parse filter: ?filter=issue:MT-1,MT-3
+        # Parse filter:
+        #   ?filter=issue:MT-1,MT-3   → explicit issue id list
+        #   ?filter=project:proj_abc  → all issues whose `project:<id>` label
+        #                               matches (Phase E4 — multi-project trace)
+        # Untagged legacy issues are treated as belonging to "default" so the
+        # Trace surface for the default project shows them too.
         allowed_ids: Optional[set[str]] = None
+        allowed_project: Optional[str] = None
         if filter and filter.startswith("issue:"):
             allowed_ids = {x.strip() for x in filter[len("issue:"):].split(",") if x.strip()}
+        elif filter and filter.startswith("project:"):
+            allowed_project = filter[len("project:"):].strip() or None
+
+        def _issue_in_project(issue_id: str) -> bool:
+            """Look up the issue's `project:<id>` label and compare. Falls back
+            to `default` for legacy issues with no project label."""
+            if allowed_project is None:
+                return True
+            try:
+                tracker_obj = orchestrator.tracker
+                if not hasattr(tracker_obj, "all"):
+                    return allowed_project == "default"
+                for issue in tracker_obj.all():
+                    if issue.id != issue_id:
+                        continue
+                    has_proj = False
+                    for label in issue.labels:
+                        if label.startswith("project:"):
+                            has_proj = True
+                            if label == f"project:{allowed_project}":
+                                return True
+                    return not has_proj and allowed_project == "default"
+            except Exception:  # noqa: BLE001
+                return False
+            return False
+
+        def _allowed(issue_id: str) -> bool:
+            if allowed_ids is not None:
+                return issue_id in allowed_ids
+            if allowed_project is not None:
+                return _issue_in_project(issue_id)
+            return True
 
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
 
         def _on_event(issue_id: str, event: AgentEvent) -> None:
-            if allowed_ids is not None and issue_id not in allowed_ids:
+            if not _allowed(issue_id):
                 return
             payload = {
                 "type": "agent_event",
@@ -948,7 +986,7 @@ def create_app(
                 pass
 
         def _on_transition(issue_id: str, frm: str, to: str) -> None:
-            if allowed_ids is not None and issue_id not in allowed_ids:
+            if not _allowed(issue_id):
                 return
             payload = {
                 "type": "fsm_transition",
@@ -998,7 +1036,7 @@ def create_app(
             with orchestrator._lock:  # noqa: SLF001
                 attempt_ids = list(orchestrator._attempts.keys())  # noqa: SLF001
             for iid in attempt_ids:
-                if allowed_ids is not None and iid not in allowed_ids:
+                if not _allowed(iid):
                     continue
                 for ev in bridge.get_recent_events(iid, limit=100):
                     await websocket.send_text(
