@@ -127,7 +127,13 @@
     "Recent in this project" 清單,點 entry 預填 textarea;切 project 時
     ChatPanel 自動 reset prompt / preview / phase 並重讀新 project 的
     歷史。8 個新 frontend test (chatHistory 單元測試)
-  - **E4 (待開)** — Per-project event-trace view + WS `?filter=project:<id>` 擴充
+  - **E4 (本批 commits,已落地)** — Per-project event-trace view:後端
+    WS `?filter=` 擴充支援 `project:<id>` 語法,looks up issue.labels →
+    `project:` 比對,沒帶 label 的視為 `default`(legacy 相容);新
+    `TracePanel.tsx`(左下浮動面板)由 `🔍 Trace` button 觸發,客戶端依
+    snapshot 建立 issue→project 對應,過濾現有 store 的 `activity` ring,
+    含 "All projects" 暫時繞過。6 個新 test(2 backend WS filter + 4
+    frontend TracePanel)
   - **E5 (待開)** — 跨 project audit + archive UI
 - [ ] **Docker scaffolding Phase 2:雙容器爆炸半徑切分** — 把 `opencode` CLI
   從 dashboard 容器抽離到獨立的 `symphony-opencode` service
