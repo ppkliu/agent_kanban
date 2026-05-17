@@ -180,7 +180,20 @@ class SubmitTaskIn(BaseModel):
             "child issue auto-linked with `parent:<id>` label and (if given) "
             "translated sibling `depends_on`. A single `idempotency_key` "
             "covers the whole batch — replays return the original parent id. "
-            "Cap: 50 subtasks per submission."
+            "Cap: 50 subtasks per submission. Mutually exclusive with "
+            "`decompose=true`."
+        ),
+    )
+    decompose: bool = Field(
+        default=False,
+        description=(
+            "Phase D2b Path B — Symphony-side decomposition. When true, the "
+            "parent is submitted with `mode=plan` and a `decompose-pending:1` "
+            "label; once the plan-mode runner finishes, the backend parses "
+            "its final assistant message as a JSON subtask array and creates "
+            "the child issues itself (mirrors the Path A fan-out). Mutually "
+            "exclusive with explicit `subtasks=[...]`. Disable globally with "
+            "env `SYMPHONY_DECOMPOSE_ENABLED=0` for cost-sensitive deploys."
         ),
     )
     project_id: Optional[str] = Field(
@@ -355,6 +368,7 @@ _TRACEPARENT_RE = re.compile(
 _TRACE_LABEL_PREFIX = "trace:"
 _PARENT_LABEL_PREFIX = "parent:"
 _PROJECT_LABEL_PREFIX = "project:"
+_DECOMPOSE_PENDING_LABEL = "decompose-pending:1"
 
 
 def _parse_or_generate_trace_id(traceparent: str | None) -> str:
@@ -467,13 +481,25 @@ def _make_task_issue(body: SubmitTaskIn, trace_id: str) -> Issue:
     description = body.task
     if body.files_hint:
         description = f"{body.task}\n\nFocus on: {', '.join(body.files_hint)}"
+    # Phase D2b — Path B parent gets the decomposition system prompt
+    # prepended so the plan-mode runner sees the right "emit a JSON
+    # subtask array" instructions, plus the `decompose-pending:1` marker
+    # label that triggers the post-finalize hook to parse + fan out.
+    effective_mode = body.mode
+    extra_labels: list[str] = []
+    if body.decompose:
+        from .decompose import DECOMPOSITION_SYSTEM_PROMPT  # noqa: PLC0415
+        description = f"{DECOMPOSITION_SYSTEM_PROMPT}\n\n---\n{description}"
+        effective_mode = "plan"
+        extra_labels.append(_DECOMPOSE_PENDING_LABEL)
     labels = ["tool-api", f"{_TRACE_LABEL_PREFIX}{trace_id}"]
-    if body.mode is not None:
-        labels.append(f"{MODE_LABEL_PREFIX}{body.mode}")
+    if effective_mode is not None:
+        labels.append(f"{MODE_LABEL_PREFIX}{effective_mode}")
     if body.parent_task_id:
         labels.append(f"{_PARENT_LABEL_PREFIX}{body.parent_task_id}")
     if body.project_id:
         labels.append(f"{_PROJECT_LABEL_PREFIX}{body.project_id}")
+    labels.extend(extra_labels)
     blocked_by = list(body.depends_on) if body.depends_on else []
     now = datetime.now(timezone.utc)
     return Issue(
@@ -536,6 +562,16 @@ def _fan_out_children(
 
 def _tracker_kind(state: "DashboardAppState") -> str:
     return state.orch.workflow.config.tracker_kind
+
+
+def _decompose_enabled() -> bool:
+    """Phase D2b kill switch. Default = enabled. Set
+    ``SYMPHONY_DECOMPOSE_ENABLED=0`` (or ``false`` / ``no``) on the server
+    to refuse all ``decompose=true`` submissions with a 400.
+    """
+    import os
+    raw = os.environ.get("SYMPHONY_DECOMPOSE_ENABLED", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
 
 
 def _submit_rate_limit_per_minute() -> int:
@@ -656,6 +692,26 @@ def post_submit_coding_task(
                 f"unknown repo {body.repo!r}; call list_repos for valid ids"
             ),
         )
+
+    # Phase D2b — `decompose=true` validation.
+    if body.decompose:
+        if body.subtasks:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "subtasks=[...] and decompose=true are mutually exclusive; "
+                    "use one or the other (caller-supplied list vs Symphony "
+                    "plan-mode runner)"
+                ),
+            )
+        if _decompose_enabled() is False:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "decomposition disabled by operator "
+                    "(SYMPHONY_DECOMPOSE_ENABLED=0)"
+                ),
+            )
 
     # Phase E1 — resolve project_id: explicit, or auto-default. Archived
     # projects reject new tasks (400). The same project_id is propagated to
