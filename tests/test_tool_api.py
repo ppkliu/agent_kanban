@@ -1189,3 +1189,152 @@ def test_create_project_rejects_bad_id(app_ctx) -> None:
     )
     # Pydantic pattern validator rejects → 422
     assert r.status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# Phase D2b — Symphony-side decomposition (decompose=true Path B)             #
+# --------------------------------------------------------------------------- #
+
+def _run_until_released(orch, issue_id: str, timeout: float = 5.0) -> None:
+    """Tick the orchestrator until the named issue's attempt is RELEASED."""
+    import time
+    from symphony_mvp.models import RunState
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        orch.tick()
+        att = orch._attempts.get(issue_id)  # noqa: SLF001
+        if att is not None and att.state == RunState.RELEASED:
+            # Give the worker thread + transition subscriber a beat to settle.
+            time.sleep(0.05)
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"issue {issue_id} did not reach RELEASED in {timeout}s")
+
+
+def test_submit_with_decompose_and_subtasks_returns_400(app_ctx) -> None:
+    """Mutex: decompose=true cannot coexist with caller-supplied subtasks."""
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "Build a TODO API",
+            "repo": "memory",
+            "decompose": True,
+            "subtasks": [{"task": "a"}],
+        },
+    )
+    assert r.status_code == 400
+    assert "mutually exclusive" in r.json()["detail"]
+
+
+def test_submit_with_decompose_kill_switch_returns_400(app_ctx, monkeypatch) -> None:
+    """SYMPHONY_DECOMPOSE_ENABLED=0 disables Path B (cost-sensitive deploys)."""
+    monkeypatch.setenv("SYMPHONY_DECOMPOSE_ENABLED", "0")
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "Build a TODO API", "repo": "memory", "decompose": True},
+    )
+    assert r.status_code == 400
+    assert "decomposition disabled" in r.json()["detail"]
+
+
+def test_submit_with_decompose_creates_parent_with_pending_label(app_ctx) -> None:
+    """Path B parent has the decompose-pending marker + mode:plan label +
+    the decomposition system prompt prepended to the description so the
+    plan-mode runner sees the right instructions."""
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "Build a TODO API", "repo": "memory", "decompose": True},
+    )
+    assert r.status_code == 200
+    parent_id = r.json()["task_id"]
+    parent = next(i for i in app_ctx["tracker"].all() if i.id == parent_id)
+    assert "decompose-pending:1" in parent.labels
+    assert "mode:plan" in parent.labels
+    assert "JSON array" in parent.description
+    assert "Build a TODO API" in parent.description
+
+
+def test_decompose_hook_creates_children_from_echo_runner_message(app_ctx) -> None:
+    """End-to-end: EchoRunner emits a JSON subtask array as its final
+    assistant message; the post-finalize hook parses it and creates the
+    children with the expected parent:/project: labels inherited."""
+    from symphony_mvp.agent_runner import EchoRunner
+    orch = app_ctx["orch"]
+    orch.runner = EchoRunner(
+        final_message='[{"task":"design schema","depends_on":[]},'
+                      '{"task":"write tests","depends_on":[0]}]'
+    )
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "Build a TODO API", "repo": "memory", "decompose": True},
+    )
+    parent_id = r.json()["task_id"]
+    _run_until_released(orch, parent_id)
+
+    children = [
+        i for i in app_ctx["tracker"].all() if f"parent:{parent_id}" in i.labels
+    ]
+    assert len(children) == 2
+    children_sorted = sorted(children, key=lambda i: i.created_at)
+    assert children_sorted[0].title.startswith("design schema")
+    assert children_sorted[1].title.startswith("write tests")
+    # All children inherit the default project (no explicit project_id
+    # was set on the parent, so auto-default applies + propagates).
+    for c in children:
+        assert "project:default" in c.labels
+    # Second child depends on the first
+    assert children_sorted[1].blocked_by == [children_sorted[0].id]
+
+
+def test_decompose_hook_emits_error_event_on_malformed_json(app_ctx) -> None:
+    """Malformed final message: no children, ERROR event recorded for
+    operator visibility."""
+    from symphony_mvp.agent_runner import EchoRunner
+    orch = app_ctx["orch"]
+    orch.runner = EchoRunner(final_message="not even close to JSON")
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "Build a TODO API", "repo": "memory", "decompose": True},
+    )
+    parent_id = r.json()["task_id"]
+    _run_until_released(orch, parent_id)
+
+    children = [
+        i for i in app_ctx["tracker"].all() if f"parent:{parent_id}" in i.labels
+    ]
+    assert children == []
+
+    events = app_ctx["bridge"].fetch_events(parent_id, limit=200)
+    error_events = [e for e in events if e["kind"] == "error"]
+    assert len(error_events) >= 1
+    assert "decomposition parse failed" in error_events[0]["data"]["message"]
+
+
+def test_decompose_hook_inherits_project_id_from_parent(app_ctx) -> None:
+    """Children created by the post-finalize hook carry the parent's
+    explicit project_id (not just the auto-default)."""
+    from symphony_mvp.agent_runner import EchoRunner
+    orch = app_ctx["orch"]
+    orch.runner = EchoRunner(
+        final_message='[{"task":"a"},{"task":"b"}]'
+    )
+    proj = app_ctx["client"].post(
+        "/api/v1/projects", json={"name": "alpha"}
+    ).json()
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "umbrella",
+            "repo": "memory",
+            "decompose": True,
+            "project_id": proj["id"],
+        },
+    )
+    parent_id = r.json()["task_id"]
+    _run_until_released(orch, parent_id)
+    children = [
+        i for i in app_ctx["tracker"].all() if f"parent:{parent_id}" in i.labels
+    ]
+    assert len(children) == 2
+    for c in children:
+        assert f"project:{proj['id']}" in c.labels
