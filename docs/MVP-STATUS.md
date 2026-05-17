@@ -49,6 +49,7 @@ via `WORKFLOW.md`**.
 | Phase E2 project selector in dashboard — TopBar dropdown, kanban filters by current project, chat panel submits under it, localStorage-persisted selection | ✅ | this batch | `cd frontend && npm test -- projectStore.test ProjectSelector.test` |
 | Phase E3 per-project chat history — localStorage transcripts keyed by project_id; chat panel surfaces "Recent in this project" + click-to-prefill; resets on project switch | ✅ | this batch | `cd frontend && npm test -- chatHistory.test` |
 | Phase E4 per-project trace view — backend WS `?filter=project:<id>` (legacy issues fall back to `default`); `🔍 Trace` panel in TopBar filters store activity by current project | ✅ | this batch | `pytest tests/test_dashboard_server.py -k project_filter; cd frontend && npm test -- TracePanel.test` |
+| Phase E5 cross-project audit + archive — ProjectSelector 📦 archive icons + collapsible "Archived (N)" section + ↩ unarchive; IssueCard 📁 project chip in "All projects" mode | ✅ | this batch | `cd frontend && npm test -- ProjectSelector.test IssueCard.test` |
 | Self-contained test suite (no LLM / no GitHub required) | ✅ | 237 tests | `.venv/bin/python -m pytest` |
 | Bearer-token auth on REST + WebSocket | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
@@ -109,7 +110,7 @@ a regression against the MVP completion line.
 | Audit date | **2026-05-17** |
 | Commit | rolling — see `git log` for latest checkpoint |
 | Tests passing | **237** (`pytest -q`) |
-| Frontend tests | **86** (`npm test`) |
+| Frontend tests | **93** (`npm test`) |
 | Docker image | `symphony-dashboard:dev` (single-container, Phase 1) |
 | Tool API endpoints live | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task / list_tasks` |
 
