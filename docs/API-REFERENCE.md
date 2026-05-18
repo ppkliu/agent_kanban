@@ -140,6 +140,16 @@ For a runnable end-to-end demo using only the stdlib see
   force-retries the task — the agent picks up where it left off, with
   the hint injected into the next attempt's prompt. Returns 404 if the
   task doesn't exist; 409 if it's not in `blocked_for_human`.
+- **`[CHECKPOINT] <message>` mid-flight progress marker** (D4): any
+  agent can emit `[CHECKPOINT] <free-form message>` or
+  `[CHECKPOINT step=2/5] <message>` inside any assistant message during
+  the run. The orchestrator scans every `MESSAGE_DELTA` event's text
+  and fans a synthetic `AgentEventKind.CHECKPOINT` event through the
+  bridge — events tab + kanban card show the latest progress live
+  without waiting for the terminal reason. Multiple checkpoints per
+  attempt are expected. Markers inside fenced code blocks
+  (`` ``` `` / `~~~`) are ignored — quoted source/docs do not spoof
+  progress.
 - **`status`** (in `check_task_status`): `pending` / `running` / `done` /
   `failed` / `cancelled` / `blocked_for_human` (Phase D3 — agent declared
   `[HUMAN_REQUIRED]` in its final message; unblock via

@@ -126,7 +126,16 @@
     + `symphony_human_resolutions_total` (counter,從 hints 表 `author=
     'human-resolver'` 行數推算)。16 個新 test (9 escalation 解析器 + 7
     整合)
-  - **D4 (待開)** — Periodic CHECKPOINT events 給 mid-flight 進度回報
+  - **D4 (本批 commits,已落地)** — CHECKPOINT mid-flight 進度回報:新
+    `symphony_mvp/checkpoint.py` 模組(regex 抓
+    `[CHECKPOINT] <msg>` 或 `[CHECKPOINT step=2/5] <msg>`,fenced code
+    block 內的 marker 會被忽略以防 prompt injection);新
+    `AgentEventKind.CHECKPOINT`;orchestrator `_on_worker_event` 在每個
+    `MESSAGE_DELTA` 之後 fan 出 synthetic `CHECKPOINT` 事件給同一條
+    listener chain,所以 bridge 會持久化 + WS push 即時推給 SPA;
+    EventsTab 增 `checkpoint` filter + 青綠色 `◆` icon;IssueCard 在
+    `recentEvents` 最新 checkpoint 上頂一條 ticker。15 個新 test (13
+    parser 解析器 + 2 orchestrator end-to-end)
   - **D5 (待開)** — Cross-task rollup summary (`get_workflow_result` aggregator)
   - 「定時 self-trigger」這條已由現有 30s polling loop 覆蓋,只剩文件補上
 - [ ] **Multi-project foundation (Phase E — 5-phase roadmap)** — 多 project /

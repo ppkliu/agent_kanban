@@ -129,6 +129,14 @@ curl -X POST http://localhost:17957/api/v1/tools/get_task_result \
   軌跡記在 `author`,預設 `"human-resolver"`),然後 force-retry —
   agent 接續往下做,hint 會在下一次 attempt 的 prompt 注入。Task 不
   存在回 404;沒在 `blocked_for_human` 回 409。
+- **`[CHECKPOINT] <message>` 進度標記** (D4):任何 runner 都可以在
+  assistant 訊息裡放 `[CHECKPOINT] <自由文字>` 或
+  `[CHECKPOINT step=2/5] <文字>` 來回報 mid-flight 進度。Orchestrator
+  掃每個 `MESSAGE_DELTA` 的文字,fan 出 synthetic
+  `AgentEventKind.CHECKPOINT` 事件 — events tab 與 kanban card 即時
+  顯示最新進度,不必等 terminal reason。同一個 attempt 多個
+  checkpoint 是預期行為。Fenced code block(`` ``` `` / `~~~`)裡的
+  marker 會被忽略,避免引用 source 時誤觸發。
 - **`status`** (in `check_task_status`):`pending` / `running` / `done` /
   `failed` / `cancelled` / `blocked_for_human` (Phase D3 — agent 在
   最後訊息丟出 `[HUMAN_REQUIRED]` 標記;走 `resolve_human_block` 解開)。

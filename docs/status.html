@@ -244,7 +244,7 @@
       <h1 class="title">設計目的、系統架構、Feature 與任務規劃</h1>
       <p class="tagline">這份頁面把目前 repo 的設計動機、核心架構、已實作 / 未實作的 feature,以及後續 roadmap 全部彙整在一頁,適合在手機上一次讀完。</p>
       <div class="pill-row">
-        <span class="pill done">後端 272 個測試全綠</span>
+        <span class="pill done">後端 287 個測試全綠</span>
         <span class="pill done">前端 93 個測試全綠</span>
         <span class="pill">審核日期 2026-05-18</span>
         <span class="pill">Python 3.10+ · React 19 · Tailwind 4</span>
@@ -552,7 +552,7 @@
         <li><span class="check done">[x]</span><span class="label"><strong>D2a</strong> — Path A: caller 給 <code>subtasks=[...]</code> <span class="sub">sibling-index → real task_id,單一 idempotency_key 整批</span></span></li>
         <li><span class="check done">[x]</span><span class="label"><strong>D2b</strong> — Path B: Symphony 用 plan-mode runner 自己拆 <span class="sub">post-finalize hook + JSON parser + kill switch</span></span></li>
         <li><span class="check done">[x]</span><span class="label"><strong>D3</strong> — <code>[HUMAN_REQUIRED]</code> escalation <span class="sub">marker detector + <code>blocked_for_human</code> status + <code>resolve_human_block</code> + Prometheus 指標</span></span></li>
-        <li><span class="check todo">[ ]</span><span class="label"><strong>D4</strong> — CHECKPOINT events <span class="sub">每 N turn 或 M 秒 emit progress;<code>check_task_status</code> 多回 <code>latest_checkpoint</code></span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>D4</strong> — <code>[CHECKPOINT]</code> mid-flight 進度回報 <span class="sub">agent 用 <code>[CHECKPOINT] &lt;msg&gt;</code> 或 <code>[CHECKPOINT step=2/5] &lt;msg&gt;</code> 標記;orchestrator 掃 MESSAGE_DELTA fan 出 synthetic checkpoint event;events tab + kanban card 即時顯示</span></span></li>
         <li><span class="check todo">[ ]</span><span class="label"><strong>D5</strong> — cross-task rollup summary <span class="sub">新 <code>get_workflow_result</code> 把 parent + children 結果合併</span></span></li>
       </ul>
 
