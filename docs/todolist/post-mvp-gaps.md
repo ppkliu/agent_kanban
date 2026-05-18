@@ -111,8 +111,21 @@
     擴充 `final_message` 給測試注入固定 JSON;環境變數
     `SYMPHONY_DECOMPOSE_ENABLED=0` kill switch 回 400。19 個新 test
     (6 整合 + 13 parser 單元)
-  - **D3 (待開)** — Human-intervention escalation:新 `TerminalReason.NEEDS_HUMAN`
-    + runner 解析 `[HUMAN_REQUIRED]` marker + `resolve_human_block` endpoint
+  - **D3 (本批 commits,已落地)** — Human-intervention escalation:新
+    `TerminalReason.NEEDS_HUMAN` + 新 `symphony_mvp/escalation.py` 模組
+    (regex 抓 `[HUMAN_REQUIRED] <reason>` 標記,fenced code block 內的
+    會被忽略以防 prompt injection);orchestrator `_on_worker_done` 在
+    AGENT_FINISHED 路徑掃描最近 `message_delta` 事件,有 marker 就改成
+    `NEEDS_HUMAN` 並把 reason 字串帶下去;`_PARENT_FAILURE_REASONS` 加上
+    `NEEDS_HUMAN`,確保 children 在 D1 dispatch gate 一起凍結;
+    `check_task_status` 回 `status="blocked_for_human"` /
+    `stage="blocked_for_human"`;新 `/api/v1/tools/resolve_human_block` 端
+    點(body 含 `resolution_hint` + 選填 `author`,寫成 hint 後
+    `force_retry`,attempt 變 UNCLAIMED 再 dispatch 時 hint 注入下一輪
+    prompt);Prometheus 加 `symphony_attempts_blocked_for_human` (gauge)
+    + `symphony_human_resolutions_total` (counter,從 hints 表 `author=
+    'human-resolver'` 行數推算)。16 個新 test (9 escalation 解析器 + 7
+    整合)
   - **D4 (待開)** — Periodic CHECKPOINT events 給 mid-flight 進度回報
   - **D5 (待開)** — Cross-task rollup summary (`get_workflow_result` aggregator)
   - 「定時 self-trigger」這條已由現有 30s polling loop 覆蓋,只剩文件補上
