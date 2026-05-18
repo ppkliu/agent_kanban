@@ -8,6 +8,7 @@ interface Filters {
   thinking: boolean;
   tool_call: boolean;
   errors: boolean;
+  checkpoint: boolean;
 }
 
 const DEFAULT_FILTERS: Filters = {
@@ -15,6 +16,7 @@ const DEFAULT_FILTERS: Filters = {
   thinking: false,
   tool_call: true,
   errors: true,
+  checkpoint: true,
 };
 
 function passes(ev: EventRecord, f: Filters): boolean {
@@ -27,6 +29,7 @@ function passes(ev: EventRecord, f: Filters): boolean {
   )
     return false;
   if (ev.kind === "error" && !f.errors) return false;
+  if (ev.kind === "checkpoint" && !f.checkpoint) return false;
   return true;
 }
 
@@ -35,6 +38,7 @@ function eventColor(kind: string): string {
   if (kind === "tool_call") return "text-amber-400";
   if (kind === "tool_result") return "text-violet-400";
   if (kind === "message_delta") return "text-blue-400";
+  if (kind === "checkpoint") return "text-teal-400";
   if (kind === "error") return "text-rose-400";
   return "text-zinc-400";
 }
@@ -45,6 +49,7 @@ function eventIcon(kind: string): string {
   if (kind === "tool_call") return "🔧";
   if (kind === "tool_result") return "↩";
   if (kind === "message_delta") return "💬";
+  if (kind === "checkpoint") return "◆";
   if (kind === "error") return "⚠";
   if (kind === "done") return "✔";
   return "·";
@@ -98,7 +103,7 @@ export default function EventsTab({ issueId }: { issueId: string }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 bg-zinc-900/30 text-xs">
-        {(["message_delta", "thinking", "tool_call", "errors"] as const).map(
+        {(["message_delta", "thinking", "tool_call", "errors", "checkpoint"] as const).map(
           (k) => (
             <label key={k} className="flex items-center gap-1.5">
               <input
@@ -158,6 +163,18 @@ export default function EventsTab({ issueId }: { issueId: string }) {
                     {(ev.data as { text?: string }).text?.slice(0, 200)}
                   </span>
                 )}
+                {ev.kind === "checkpoint" && (() => {
+                  const d = ev.data as { message?: string; step?: number; total?: number };
+                  const stepStr = d.step != null && d.total != null
+                    ? ` (${d.step}/${d.total})`
+                    : "";
+                  return (
+                    <span className="text-teal-300 truncate">
+                      {d.message ?? ""}
+                      {stepStr ? <span className="text-teal-500">{stepStr}</span> : null}
+                    </span>
+                  );
+                })()}
                 {ev.kind === "error" && (
                   <span className="text-rose-300 truncate">
                     {(ev.data as { message?: string }).message}
