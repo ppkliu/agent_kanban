@@ -3,18 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Symphony — 已實作 / 未實作狀態</title>
-  <meta name="description" content="Symphony Dashboard 目前的 feature 與 design 規劃,以及實作完成度。手機友善版。">
+  <title>Symphony — 設計、架構、Feature 與任務規劃</title>
+  <meta name="description" content="Symphony Dashboard 完整設計文件 · 系統架構 · feature 列表 · roadmap 規劃。手機友善版。">
   <style>
     :root {
       --bg: #09090b;
       --panel: #18181b;
       --panel-2: #27272a;
+      --panel-3: #3f3f46;
       --border: #3f3f46;
       --fg: #fafafa;
       --fg-muted: #a1a1aa;
       --fg-dim: #71717a;
       --accent: #10b981;
+      --accent-2: #34d399;
       --warn: #f59e0b;
       --bad: #f43f5e;
       --done: #34d399;
@@ -25,11 +27,13 @@
       --bg: #fafaf9;
       --panel: #f5f5f4;
       --panel-2: #e7e5e4;
+      --panel-3: #d6d3d1;
       --border: #d6d3d1;
       --fg: #1c1917;
       --fg-muted: #57534e;
       --fg-dim: #78716c;
       --accent: #047857;
+      --accent-2: #059669;
       --warn: #b45309;
       --bad: #be123c;
       --done: #047857;
@@ -38,21 +42,39 @@
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang TC", "Microsoft JhengHei", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, "PingFang TC", "Microsoft JhengHei", sans-serif;
       font-size: 15px;
-      line-height: 1.6;
+      line-height: 1.65;
       -webkit-text-size-adjust: 100%;
+      padding-bottom: 64px;
     }
-    .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 16px; }
+    a, a:visited { color: var(--accent); text-decoration: none; }
+    a:hover { border-bottom: 1px dotted var(--accent); }
+    code { font-family: var(--mono); font-size: 0.88em;
+      background: var(--panel-2); border: 1px solid var(--border);
+      padding: 1px 5px; border-radius: 4px; word-break: break-word; }
+    pre {
+      font-family: var(--mono); font-size: 12px;
+      background: var(--panel); border: 1px solid var(--border);
+      padding: 10px 12px; border-radius: 6px; overflow-x: auto;
+      line-height: 1.5;
+    }
+    em { color: var(--fg-muted); font-style: normal; }
+    strong { color: var(--fg); }
+
+    /* -------- Top bar -------- */
     header.page {
-      padding: 24px 0 16px;
+      padding: 24px 0 12px;
       border-bottom: 1px solid var(--border);
-      margin-bottom: 24px;
-      display: flex; flex-direction: column; gap: 8px;
+      margin-bottom: 12px;
+      display: flex; flex-direction: column; gap: 6px;
     }
-    .page-title { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
-    .page-subtitle { color: var(--fg-muted); font-size: 14px; margin: 0; }
-    .pill-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .crumb { color: var(--fg-dim); font-size: 12px; }
+    h1.title { font-size: 24px; font-weight: 700; margin: 4px 0; letter-spacing: -0.01em; }
+    .tagline { color: var(--fg-muted); font-size: 14px; margin: 0; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
     .pill {
       display: inline-flex; align-items: center; gap: 4px;
       background: var(--panel-2); border: 1px solid var(--border);
@@ -60,69 +82,156 @@
     }
     .pill.done { color: var(--done); border-color: var(--done); }
     .pill.warn { color: var(--warn); border-color: var(--warn); }
-    .pill.bad  { color: var(--bad);  border-color: var(--bad);  }
-    section.block { margin-bottom: 24px; }
-    section.block h2 {
-      font-size: 17px; font-weight: 600; margin: 24px 0 8px;
-      display: flex; align-items: center; gap: 8px;
+
+    /* -------- Sticky TOC -------- */
+    nav.toc {
+      position: sticky; top: 0; z-index: 5;
+      background: rgba(9,9,11,0.92);
+      backdrop-filter: saturate(120%) blur(6px);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 0;
+      margin: 0 -16px 16px;
     }
-    section.block h2 .count { color: var(--fg-dim); font-weight: 400; font-size: 13px; }
+    [data-theme="light"] nav.toc { background: rgba(250,250,249,0.92); }
+    nav.toc ol {
+      display: flex; flex-wrap: wrap; gap: 4px 10px;
+      margin: 0; padding: 0 16px; list-style: none;
+      font-size: 13px;
+    }
+    nav.toc a {
+      display: inline-block; padding: 2px 8px;
+      border-radius: 999px; background: var(--panel-2);
+      border: 1px solid var(--border); color: var(--fg-muted);
+    }
+    nav.toc a:hover { border-color: var(--accent); color: var(--accent); border-bottom: 1px solid var(--accent); }
+
+    /* -------- Section blocks -------- */
+    section.block { margin: 32px 0; scroll-margin-top: 70px; }
+    section.block h2 {
+      font-size: 19px; font-weight: 700; margin: 0 0 4px;
+      padding-bottom: 6px; border-bottom: 2px solid var(--accent);
+      display: inline-block;
+    }
+    section.block h3 {
+      font-size: 16px; font-weight: 600;
+      margin: 24px 0 8px; color: var(--fg);
+    }
+    section.block p { margin: 10px 0; color: var(--fg-muted); }
+    section.block p strong { color: var(--fg); }
+
+    /* -------- Architecture ASCII -------- */
+    .arch {
+      font-family: var(--mono); font-size: 11.5px; line-height: 1.4;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; overflow-x: auto;
+      white-space: pre; color: var(--fg-muted);
+    }
+    .arch .h { color: var(--accent); font-weight: 700; }
+    .arch .b { color: var(--fg); }
+
+    /* -------- Cards -------- */
     .card {
       background: var(--panel); border: 1px solid var(--border);
       border-radius: 8px; padding: 12px 14px; margin: 8px 0;
-      display: flex; flex-direction: column; gap: 4px;
+      display: flex; flex-direction: column; gap: 6px;
     }
-    .card .head {
-      display: flex; align-items: flex-start; gap: 8px;
-      flex-wrap: wrap;
-    }
-    .card .status {
+    .card .row { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+    .card .badge {
       flex: 0 0 auto;
-      font-family: var(--mono); font-size: 12px;
-      padding: 1px 6px; border-radius: 4px; border: 1px solid;
+      font-family: var(--mono); font-size: 11px;
+      padding: 1px 7px; border-radius: 4px; border: 1px solid; letter-spacing: 0.03em;
     }
-    .card .status.done { color: var(--done); border-color: var(--done); }
-    .card .status.partial { color: var(--warn); border-color: var(--warn); }
-    .card .status.pending { color: var(--pending); border-color: var(--pending); }
+    .card .badge.done    { color: var(--done); border-color: var(--done); }
+    .card .badge.partial { color: var(--warn); border-color: var(--warn); }
+    .card .badge.pending { color: var(--pending); border-color: var(--pending); }
+    .card .badge.now     { color: var(--accent); border-color: var(--accent); }
     .card .title { font-weight: 600; flex: 1 1 auto; min-width: 0; word-break: break-word; }
-    .card .desc { color: var(--fg-muted); font-size: 13px; }
-    .card .meta { color: var(--fg-dim); font-size: 12px; font-family: var(--mono); margin-top: 4px; }
-    code, .mono { font-family: var(--mono); font-size: 0.9em; }
-    code {
-      background: var(--panel-2); border: 1px solid var(--border);
-      padding: 1px 4px; border-radius: 3px;
-    }
-    .roadmap { padding-left: 0; list-style: none; }
-    .roadmap li {
-      padding: 6px 0;
-      display: flex; gap: 8px; align-items: flex-start;
+    .card .desc { color: var(--fg-muted); font-size: 13.5px; }
+    .card .meta { color: var(--fg-dim); font-size: 12px; font-family: var(--mono); }
+
+    /* -------- Roadmap list -------- */
+    ul.roadmap { padding-left: 0; list-style: none; margin: 0; }
+    ul.roadmap li {
+      padding: 8px 0;
+      display: flex; gap: 10px; align-items: flex-start;
       border-bottom: 1px dashed var(--border);
     }
-    .roadmap li:last-child { border-bottom: 0; }
-    .roadmap .check { flex: 0 0 18px; font-family: var(--mono); }
-    .roadmap .check.done { color: var(--done); }
-    .roadmap .check.todo { color: var(--fg-dim); }
-    .roadmap .label { flex: 1 1 auto; }
-    .roadmap .label strong { font-weight: 600; }
-    .roadmap .sub { display: block; color: var(--fg-muted); font-size: 12.5px; margin-top: 2px; }
-    a, a:visited { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
+    ul.roadmap li:last-child { border-bottom: 0; }
+    ul.roadmap .check {
+      flex: 0 0 18px; font-family: var(--mono);
+      margin-top: 2px;
+    }
+    ul.roadmap .check.done { color: var(--done); }
+    ul.roadmap .check.todo { color: var(--fg-dim); }
+    ul.roadmap .check.partial { color: var(--warn); }
+    ul.roadmap .label { flex: 1 1 auto; }
+    ul.roadmap .label strong { font-weight: 600; }
+    ul.roadmap .sub {
+      display: block; color: var(--fg-muted); font-size: 12.5px; margin-top: 2px;
+    }
+
+    /* -------- Pillars (design intent) -------- */
+    .pillars {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    @media (min-width: 560px) {
+      .pillars { grid-template-columns: 1fr 1fr; }
+    }
+    .pillar {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      background: var(--panel);
+    }
+    .pillar h4 {
+      margin: 0 0 4px;
+      font-size: 14px; font-weight: 700;
+      color: var(--accent);
+    }
+    .pillar p { margin: 0; color: var(--fg-muted); font-size: 13px; }
+
+    /* -------- FSM table -------- */
+    .fsm {
+      width: 100%; border-collapse: collapse;
+      font-size: 13px;
+    }
+    .fsm th, .fsm td {
+      text-align: left; vertical-align: top;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .fsm th { color: var(--fg-dim); font-weight: 600; font-size: 12px;
+      text-transform: uppercase; letter-spacing: 0.05em; }
+    .fsm td.kw { font-family: var(--mono); color: var(--accent-2); white-space: nowrap; }
+    .fsm td.desc { color: var(--fg-muted); }
+
+    /* -------- Theme toggle -------- */
     .theme-toggle {
       position: fixed; top: 12px; right: 12px;
       background: var(--panel); border: 1px solid var(--border);
       color: var(--fg); width: 36px; height: 36px;
       border-radius: 999px; font-size: 16px; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
+      z-index: 10;
     }
-    .lang { color: var(--fg-dim); font-size: 12px; margin-top: 2px; }
+
+    /* -------- Footer -------- */
     footer.page {
-      padding: 24px 0; color: var(--fg-dim); font-size: 12px;
+      padding: 24px 0 32px; color: var(--fg-dim); font-size: 12px;
       border-top: 1px solid var(--border); margin-top: 24px;
     }
+
+    /* -------- Mobile tweaks -------- */
     @media (max-width: 480px) {
       body { font-size: 14px; }
       .wrap { padding: 12px; }
-      .page-title { font-size: 19px; }
-      section.block h2 { font-size: 16px; }
+      h1.title { font-size: 20px; }
+      section.block h2 { font-size: 17px; }
+      section.block h3 { font-size: 14.5px; }
+      nav.toc ol { font-size: 12px; }
+      pre, .arch { font-size: 11px; }
     }
   </style>
 </head>
@@ -131,216 +240,396 @@
   <div class="wrap">
 
     <header class="page">
-      <p class="page-subtitle">Symphony Dashboard · 已實作 / 未實作狀態</p>
-      <h1 class="page-title">手機友善版 · 一頁讀完目前進度</h1>
-      <p class="page-subtitle">基於目前 feature 與 design 規劃自動產出。要看權威來源:<a href="MVP-STATUS.zh-TW.md">MVP-STATUS.zh-TW.md</a> &amp; <a href="todolist/post-mvp-gaps.md">post-mvp-gaps.md</a>。</p>
+      <p class="crumb">Symphony Dashboard · 設計文件 · 手機友善版</p>
+      <h1 class="title">設計目的、系統架構、Feature 與任務規劃</h1>
+      <p class="tagline">這份頁面把目前 repo 的設計動機、核心架構、已實作 / 未實作的 feature,以及後續 roadmap 全部彙整在一頁,適合在手機上一次讀完。</p>
       <div class="pill-row">
         <span class="pill done">後端 272 個測試全綠</span>
         <span class="pill done">前端 93 個測試全綠</span>
         <span class="pill">審核日期 2026-05-18</span>
+        <span class="pill">Python 3.10+ · React 19 · Tailwind 4</span>
       </div>
     </header>
 
-    <!-- =============================================================== -->
-    <section class="block">
-      <h2>① 已實作 — 核心 MVP 框架 <span class="count">(everything below ships green)</span></h2>
+    <nav class="toc" aria-label="頁內目錄">
+      <ol>
+        <li><a href="#intent">① 設計目的</a></li>
+        <li><a href="#arch">② 系統架構</a></li>
+        <li><a href="#features">③ Feature 功能</a></li>
+        <li><a href="#ui">④ Dashboard UI</a></li>
+        <li><a href="#roadmap">⑤ 任務規劃</a></li>
+        <li><a href="#try">⑥ 怎麼玩</a></li>
+      </ol>
+    </nav>
 
-      <div class="card">
-        <div class="head"><span class="status done">DONE</span><div class="title">單容器 Docker 部署</div></div>
-        <div class="desc">一個 <code>docker compose up</code> 起 dashboard + 內建 opencode CLI;映射 host :17957。</div>
-        <div class="lang">Single-container Docker scaffolding.</div>
-      </div>
+    <!-- ====================================================== -->
+    <section class="block" id="intent">
+      <h2>① 設計目的</h2>
+      <p>Symphony 是 <a href="https://github.com/openai/symphony">openai/symphony</a> SPEC.md 的 Python 實作,圍繞「<strong>外部 LLM agent 透過 RESTful Tool API 把 Symphony 當 coding-service backend</strong>」這個契約而設計。Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮。</p>
 
-      <div class="card">
-        <div class="head"><span class="status done">DONE</span><div class="title">Coding Service Tool API (8 端點)</div></div>
-        <div class="desc">
-          <code>list_repos</code> · <code>inspect_repo</code> · <code>submit_coding_task</code> · <code>check_task_status</code> · <code>get_task_result</code> · <code>cancel_task</code> · <code>list_tasks</code> · <code>resolve_human_block</code>
+      <div class="pillars">
+        <div class="pillar">
+          <h4>Local-first</h4>
+          <p>tracker 預設是內建 SQLite 看板,資料與排程狀態都不離開本機。沒有任何雲端 / SaaS 強制依賴。本地 LLM (vLLM / Ollama / LM Studio) 是主要運行目標。</p>
         </div>
-        <div class="lang">External LLM agents drive Symphony via fire-and-check Tool API.</div>
-      </div>
-
-      <div class="card">
-        <div class="head"><span class="status done">DONE</span><div class="title">四種可替換 runner</div></div>
-        <div class="desc">echo (測試) / opencode (vLLM / Ollama / LiteLLM) / anthropic_api / claude_cli — <code>WORKFLOW.md</code> 一行切換,或 dashboard <code>🔧 Runner</code> 即時換。</div>
-        <div class="lang">Four pluggable runners selectable via WORKFLOW.md or runtime patch.</div>
-      </div>
-
-      <div class="card">
-        <div class="head"><span class="status done">DONE</span><div class="title">5 欄 Kanban + 6 tab IssueDrawer</div></div>
-        <div class="desc">Pending / Claimed / Running / Retry-Queued / Released;每個 issue 可查看 Overview / Events / Prompt / Hints / Workspace / Replay。</div>
-      </div>
-
-      <div class="card">
-        <div class="head"><span class="status done">DONE</span><div class="title">Per-task <code>mode</code> tool whitelist</div></div>
-        <div class="desc"><code>plan</code> = read+grep+bash · <code>build</code> = full toolset · <code>review</code> = read+grep only。runner 層硬性 enforce。</div>
-      </div>
-
-      <div class="card">
-        <div class="head"><span class="status done">DONE</span><div class="title">Prompt-injection 防護 Phase 1</div></div>
-        <div class="desc">自動 system-message preamble + 把 untrusted issue/hint 欄位包進 <code>&lt;&lt;&lt;…BEGIN/END&gt;&gt;&gt;</code> framing;攻擊者塞的偽造邊界 token 自動 defang。</div>
-      </div>
-
-      <div class="card">
-        <div class="head"><span class="status done">DONE</span><div class="title">Persistent retry queue</div></div>
-        <div class="desc">in-flight attempts SQLite 化,行程重啟自動 hydrate,session_id continuity 保留。</div>
-      </div>
-
-      <div class="card">
-        <div class="head"><span class="status done">DONE</span><div class="title">Phase C — idempotency / rate limit / Prometheus / W3C trace_id</div></div>
-        <div class="desc">
-          <code>submit_coding_task</code> 透過 <code>idempotency_key</code> 1 hr 安全重試 ·
-          <code>SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE</code> env 限速 429 ·
-          <code>/metrics</code> 9 個 Prometheus counter (純標準函式庫) ·
-          W3C <code>traceparent</code> header → <code>trace:&lt;32hex&gt;</code> issue label。
+        <div class="pillar">
+          <h4>Autonomy-first</h4>
+          <p>Dashboard 是觀察台,不是控制台。Agent 可以跑數小時數天,operator 從 kanban + 事件流回頭看怎麼回事;緊急 abort 才介入。Hint 機制是 operator → agent 單向。</p>
         </div>
-      </div>
-
-      <div class="card">
-        <div class="head"><span class="status done">DONE</span><div class="title">Linear adapter (第二個 production tracker)</div></div>
-        <div class="desc">GraphQL,跟 GitHubIssuesTracker 平行,驗證 tracker 抽象層可換。</div>
-      </div>
-
-      <div class="card">
-        <div class="head"><span class="status done">DONE</span><div class="title">Bearer auth + emergency stop-all</div></div>
-        <div class="desc">REST + WebSocket 共用 <code>DASHBOARD_API_KEY</code>;TopBar 紅色 <code>⛔ Stop All</code> 一鍵 abort 所有 active worker。</div>
+        <div class="pillar">
+          <h4>Tool API 契約</h4>
+          <p>對外暴露 8 個語意化 endpoint (<code>list_repos</code> / <code>inspect_repo</code> / <code>submit_coding_task</code> / <code>check_task_status</code> / <code>get_task_result</code> / <code>cancel_task</code> / <code>list_tasks</code> / <code>resolve_human_block</code>),fire-and-check 語意,任何上游 LLM client 都能 function-calling 接進來。</p>
+        </div>
+        <div class="pillar">
+          <h4>Docker 自架</h4>
+          <p>單一 <code>docker compose up</code> 帶起 dashboard + 內建 opencode CLI。Phase 2 雙容器 (opencode 抽離) 已分析過設計,延後到 production-hardening 階段。</p>
+        </div>
+        <div class="pillar">
+          <h4>四個可替換 runner</h4>
+          <p>echo (測試) / opencode (LiteLLM,真正 local LLM 主力) / anthropic_api (直連 /v1/messages) / claude_cli (cloud)。<code>WORKFLOW.md</code> 一行切換,或 dashboard 🔧 Runner 即時換 (Phase D3)。</p>
+        </div>
+        <div class="pillar">
+          <h4>三個沒踩到的雷</h4>
+          <p>① tracker 沒寫死 SaaS · ② orchestrator 不會反過來寫 tracker · ③ 內部 FSM 跟 tracker state 嚴格分開。這三條讓 Symphony 可以平移到任何 tracker 後端。</p>
+        </div>
       </div>
     </section>
 
-    <!-- =============================================================== -->
-    <section class="block">
-      <h2>② Phase D — Autonomous coding loop <span class="count">(2/3 後續仍 pending)</span></h2>
-      <ul class="roadmap">
-        <li>
-          <span class="check done">[x]</span>
-          <span class="label">
-            <strong>D1 — Subtask graph foundation</strong>
-            <span class="sub"><code>parent_task_id</code> + <code>depends_on</code> 在 <code>submit_coding_task</code>;parent 失敗時 children 在 dispatch gate 凍結;<code>list_tasks</code> 端點走 child graph。</span>
-          </span>
-        </li>
-        <li>
-          <span class="check done">[x]</span>
-          <span class="label">
-            <strong>D2a — Path A 拆解 (caller-supplied)</strong>
-            <span class="sub">caller 直接送 <code>subtasks=[...]</code>,server 同時建 1 parent + N child;sibling index 翻成真 task_id。</span>
-          </span>
-        </li>
-        <li>
-          <span class="check done">[x]</span>
-          <span class="label">
-            <strong>D2b — Path B 拆解 (Symphony-side via plan-mode runner)</strong>
-            <span class="sub"><code>decompose=true</code> 讓 Symphony 自己跑 plan-mode runner,parse 它的最後 message → JSON 子任務陣列 → fan-out children。<code>SYMPHONY_DECOMPOSE_ENABLED=0</code> kill switch。</span>
-          </span>
-        </li>
-        <li>
-          <span class="check done">[x]</span>
-          <span class="label">
-            <strong>D3 — Human-intervention escalation</strong>
-            <span class="sub">agent 用 <code>[HUMAN_REQUIRED] &lt;reason&gt;</code> 結束 turn → 標 <code>needs_human</code> → 走 <code>resolve_human_block</code> 端點記 hint + force-retry。Fenced code block 內的標記會被忽略(prompt-injection 防護)。</span>
-          </span>
-        </li>
-        <li>
-          <span class="check todo">[ ]</span>
-          <span class="label">
-            <strong>D4 — Periodic CHECKPOINT events</strong>
-            <span class="sub">agent 跑到一半也能看到進度。每 N turn 或 M 秒 emit 一個 CHECKPOINT 含 <code>turns_consumed / cost_usd / last_summary</code>;<code>check_task_status</code> 回傳 <code>latest_checkpoint</code>。</span>
-          </span>
-        </li>
-        <li>
-          <span class="check todo">[ ]</span>
-          <span class="label">
-            <strong>D5 — Cross-task rollup summary</strong>
-            <span class="sub">新 <code>get_workflow_result</code> 端點,把 parent + 所有 children 的 result 合併成一份報告。</span>
-          </span>
-        </li>
+    <!-- ====================================================== -->
+    <section class="block" id="arch">
+      <h2>② 系統架構</h2>
+
+      <h3>2.1 元件總覽</h3>
+      <p>單一 Python package <code>symphony_mvp</code> + 一個 React 19 SPA。Dashboard FastAPI server 同時 host 後端 REST + WebSocket + 已 build 的 SPA。</p>
+<div class="arch"><span class="h">                    ┌──────────────────────────────────────┐</span>
+                    │           <span class="b">External LLM agent</span>           │
+                    │  (Claude / GPT / 自家 / browser ChatPanel) │
+                    └────────────────┬─────────────────────┘
+                                     │ HTTPS / WS
+                                     ▼
+                ┌──────────────────────────────────────────┐
+                │      <span class="b">Dashboard FastAPI app</span>              │
+                │                                          │
+                │  · <span class="b">Tool API</span>   (POST /api/v1/tools/*)    │
+                │  · <span class="b">Operator API</span> (REST /api/v1/issues/*)  │
+                │  · <span class="b">Projects</span>   (REST /api/v1/projects)   │
+                │  · <span class="b">WS</span>         (/api/v1/events)          │
+                │  · <span class="b">/metrics</span>   (Prometheus text format)  │
+                │  · <span class="b">/healthz</span>   (liveness)                 │
+                └────────────┬─────────────────────────────┘
+                             │ in-process
+                             ▼
+        ┌────────────────────────────────────────────────────┐
+        │              <span class="b">Orchestrator</span>  (single thread tick) │
+        │                                                    │
+        │   per-tick 5-step:                                 │
+        │   1. Reconcile (stalls, external terminal)         │
+        │   2. Preflight (config sanity)                     │
+        │   3. Fetch (tracker.fetch_active)                  │
+        │   4. Sort (override · priority · created_at)       │
+        │   5. Dispatch (workers,respect max_concurrent)    │
+        └────┬───────────────┬────────────────┬──────────────┘
+             │               │                │
+             ▼               ▼                ▼
+    ┌────────────────┐ ┌────────────────┐ ┌────────────────┐
+    │  <span class="b">Tracker</span>       │ │  <span class="b">Runner</span>        │ │  <span class="b">Bridge</span>        │
+    │  InMemory /    │ │  echo /        │ │ events / hints  │
+    │  GitHub /      │ │  opencode /    │ │ priority over   │
+    │  Linear        │ │  anthropic_api │ │ attempt_history │
+    │                │ │  claude_cli    │ │ submit_log      │
+    └────────────────┘ └────────────────┘ └────────┬───────┘
+                                                   │
+                                                   ▼
+                                  ┌────────────────────────────┐
+                                  │  <span class="b">SQLite (dashboard.db)</span>     │
+                                  │  events / hints / history  │
+                                  │  projects / idempotency    │
+                                  │  attempts_state / submits  │
+                                  └────────────────────────────┘
+</div>
+
+      <h3>2.2 內部 FSM</h3>
+      <p>每一個 issue 在 orchestrator 內維護一個 <code>RunAttempt</code>,跑下面這個 FSM。注意這跟 tracker 自己的 issue state (Todo / In Progress / Done) <strong>嚴格分開</strong> — orchestrator 從不寫回 tracker。</p>
+      <table class="fsm">
+        <thead><tr><th>State</th><th>意義</th></tr></thead>
+        <tbody>
+          <tr><td class="kw">UNCLAIMED</td><td class="desc">已知 issue,還沒派出 worker</td></tr>
+          <tr><td class="kw">CLAIMED</td><td class="desc">已起 worker thread,還沒收到第一個 event</td></tr>
+          <tr><td class="kw">RUNNING</td><td class="desc">worker thread 正在收 runner events</td></tr>
+          <tr><td class="kw">RETRY_QUEUED</td><td class="desc">執行失敗,等待退避時間後重試</td></tr>
+          <tr><td class="kw">RELEASED</td><td class="desc">終態。帶 <code>terminal_reason</code> (handoff / agent_finished / max_turns / stall_timeout / error / aborted / needs_human / tracker_terminal / user_input_required)</td></tr>
+        </tbody>
+      </table>
+
+      <h3>2.3 Issue → Tool API 共用的 label 約定</h3>
+      <p>很多 cross-cutting concern 都用 <strong>label 編碼</strong>而不是新欄位,讓 tracker 不用改 schema 也能存:</p>
+      <table class="fsm">
+        <thead><tr><th>Label prefix</th><th>用途</th><th>Phase</th></tr></thead>
+        <tbody>
+          <tr><td class="kw">tool-api</td><td class="desc">Tool API 建立的 issue 標記</td><td>A</td></tr>
+          <tr><td class="kw">mode:plan|build|review</td><td class="desc">per-task runner-level tool whitelist</td><td>B</td></tr>
+          <tr><td class="kw">trace:&lt;32hex&gt;</td><td class="desc">W3C TraceContext,從 <code>traceparent</code> header 抽出</td><td>C</td></tr>
+          <tr><td class="kw">parent:&lt;task_id&gt;</td><td class="desc">subtask 指向 parent</td><td>D1</td></tr>
+          <tr><td class="kw">project:&lt;id&gt;</td><td class="desc">multi-project 分組;沒帶視為 default</td><td>E1</td></tr>
+          <tr><td class="kw">decompose-pending:1</td><td class="desc">需要 post-finalize hook 拆解</td><td>D2b</td></tr>
+        </tbody>
+      </table>
+
+      <h3>2.4 持久化策略</h3>
+      <p>orchestrator 的 in-memory state 是 source of truth (SPEC §3)。Dashboard SQLite (<code>dashboard.db</code>) 只持久化 5 件事:</p>
+      <ul>
+        <li><code>event_records</code> — agent event 歷史,Replay tab 用</li>
+        <li><code>hints</code> — operator 補充的 prompt 內容</li>
+        <li><code>priority_overrides</code> — 拖拉重排的 ranking</li>
+        <li><code>attempt_history</code> — RELEASED 的 attempt snapshot</li>
+        <li><code>attempts_state</code> — 行程重啟後 hydrate in-flight 用</li>
+      </ul>
+      <p>刪 <code>dashboard.db</code> 不會影響 orchestrator 的排程正確性 — 只會丟掉 Replay 歷史跟未消費的 hint。</p>
+
+      <h3>2.5 WebSocket 推播模型 (Phase D 之後)</h3>
+      <p>前端 <strong>不再 REST poll</strong> <code>/api/v1/state</code>。WS handler 在 connect 後立刻推一份 <code>state_snapshot</code>,然後每個 state-mutating event (<code>fsm_transition</code> / <code>config_changed</code> / <code>workflow_reloaded</code>) 後再 push 一份。</p>
+      <p>WS filter 支援兩種:<code>?filter=issue:&lt;id1&gt;,&lt;id2&gt;</code> 或 <code>?filter=project:&lt;id&gt;</code>(Phase E4)。</p>
+
+      <h3>2.6 安全 / 隔離邊界</h3>
+      <ul>
+        <li><strong>Bearer auth</strong> — REST + WebSocket 共用 <code>DASHBOARD_API_KEY</code>;設了就一律檢查。 <code>/metrics</code> 故意不檢 auth (Prometheus scrape convention)。</li>
+        <li><strong>Workspace 隔離</strong> — 每個 issue 的 worker 在獨立的 workspace 目錄裡跑 (SPEC §7 invariant #1)。</li>
+        <li><strong>Prompt injection 防護 Phase 1</strong> — system-message preamble + 把 untrusted issue/hint 欄位包進 <code>&lt;&lt;&lt;ISSUE_DATA_BEGIN/END&gt;&gt;&gt;</code> 與 <code>&lt;&lt;&lt;OPERATOR_HINT_BEGIN/END&gt;&gt;&gt;</code> 邊界;攻擊者塞偽造邊界 token 會被 defang。</li>
+        <li><strong>Per-task mode</strong> — <code>plan</code> = read+grep+bash;<code>build</code> = full toolset;<code>review</code> = read+grep only。Runner argv 層硬性 enforce,不是 prompt suggestion。</li>
+        <li><strong>Rate limit</strong> — <code>SYMPHONY_SUBMIT_RATE_LIMIT_PER_MINUTE</code> 限制 <code>submit_coding_task</code> 速率,超過回 429 + <code>Retry-After: 60</code>。</li>
       </ul>
     </section>
 
-    <!-- =============================================================== -->
-    <section class="block">
-      <h2>③ Phase E — Multi-project / conversation <span class="count">(全綠)</span></h2>
+    <!-- ====================================================== -->
+    <section class="block" id="features">
+      <h2>③ Feature 功能 (已實作)</h2>
+
+      <h3>3.1 Tool API (8 個 endpoint)</h3>
+
+      <div class="card">
+        <div class="row"><span class="badge done">DONE</span><div class="title">POST /api/v1/tools/list_repos</div></div>
+        <div class="desc">列出 Symphony 綁定的 repo。Phase A 只回 <code>memory</code>。</div>
+      </div>
+
+      <div class="card">
+        <div class="row"><span class="badge done">DONE</span><div class="title">POST /api/v1/tools/inspect_repo</div></div>
+        <div class="desc">讀 AGENTS.md / tree summary / 語言分布,cheap 不起 agent。建議上游 LLM 第一步先呼叫。</div>
+      </div>
+
+      <div class="card">
+        <div class="row"><span class="badge done">DONE</span><div class="title">POST /api/v1/tools/submit_coding_task</div></div>
+        <div class="desc">主要 entry point。接受 <code>task</code>、<code>repo</code>、<code>files_hint</code>、<code>mode</code>、<code>idempotency_key</code>、<code>parent_task_id</code>、<code>depends_on</code>、<code>subtasks</code>(D2a Path A)、<code>decompose</code>(D2b Path B)、<code>project_id</code>(E1)。1 秒內 fire-and-check 回 <code>task_id</code> + <code>trace_id</code>。</div>
+      </div>
+
+      <div class="card">
+        <div class="row"><span class="badge done">DONE</span><div class="title">POST /api/v1/tools/check_task_status</div></div>
+        <div class="desc">輪詢狀態。回 <code>status</code>(pending / running / done / failed / cancelled / blocked_for_human)、<code>stage</code>、<code>progress</code>、<code>turns</code>、<code>next_poll_after_ms</code>。</div>
+      </div>
+
+      <div class="card">
+        <div class="row"><span class="badge done">DONE</span><div class="title">POST /api/v1/tools/get_task_result</div></div>
+        <div class="desc">取已完成 task 的結構化結果:<code>summary</code> + <code>files_changed</code> + <code>tests_run</code> + <code>blockers</code> + <code>follow_ups</code> + <code>detailed_url</code>。</div>
+      </div>
+
+      <div class="card">
+        <div class="row"><span class="badge done">DONE</span><div class="title">POST /api/v1/tools/cancel_task</div></div>
+        <div class="desc">中止 running task。Idempotent — 已結束的 task 回 <code>was_running=false</code>。</div>
+      </div>
+
+      <div class="card">
+        <div class="row"><span class="badge done">DONE</span><div class="title">POST /api/v1/tools/list_tasks</div></div>
+        <div class="desc">列出 Tool API 建的 task。可依 <code>parent_task_id</code> / <code>project_id</code> / <code>status</code> 過濾;預設 cap 100 筆,上限 500。</div>
+      </div>
+
+      <div class="card">
+        <div class="row"><span class="badge done">DONE</span><div class="title">POST /api/v1/tools/resolve_human_block</div></div>
+        <div class="desc">Operator 解開 agent 用 <code>[HUMAN_REQUIRED]</code> escalate 的 task。寫一筆 hint(audit-trail <code>author</code> 預設 <code>"human-resolver"</code>)+ force-retry。</div>
+      </div>
+
+      <h3>3.2 拆解工作流 (Phase D1 / D2a / D2b)</h3>
       <ul class="roadmap">
-        <li><span class="check done">[x]</span><span class="label"><strong>E1 — Projects 基礎建設</strong><span class="sub">SQLite <code>projects</code> 表;<code>submit_coding_task</code> 收 <code>project_id</code>;sub-task fan-out 繼承;<code>/api/v1/projects</code> CRUD REST。</span></span></li>
-        <li><span class="check done">[x]</span><span class="label"><strong>E2 — Project selector dropdown</strong><span class="sub">TopBar 下拉 + kanban 依當前 project 過濾;ChatPanel 跟著送對的 project_id;localStorage 記住選擇。</span></span></li>
-        <li><span class="check done">[x]</span><span class="label"><strong>E3 — Per-project chat 歷史</strong><span class="sub">localStorage keyed by project_id (FIFO 20 條);ChatPanel idle 顯示「Recent in this project」+ click-to-prefill。</span></span></li>
-        <li><span class="check done">[x]</span><span class="label"><strong>E4 — Per-project trace 監控</strong><span class="sub">WS <code>?filter=project:&lt;id&gt;</code> + 新 <code>🔍 Trace</code> 浮動面板 (依 snapshot 過濾 activity)。</span></span></li>
-        <li><span class="check done">[x]</span><span class="label"><strong>E5 — 跨 project audit + archive</strong><span class="sub">ProjectSelector 加 📦 archive + 可摺疊「Archived (N)」+ ↩ unarchive;IssueCard 在「All projects」模式顯示 📁 project chip。</span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>D1 — Subtask graph</strong><span class="sub"><code>parent_task_id</code> + <code>depends_on</code> 編碼成 label / blocked_by;parent 失敗時 children 在 dispatch gate 凍結。</span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>D2a — Path A (caller-supplied)</strong><span class="sub">caller 直接送 <code>subtasks=[...]</code>,server 一次建 1 parent + N child;sibling index 翻成真 task_id,單一 <code>idempotency_key</code> 覆蓋整批。</span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>D2b — Path B (Symphony-side)</strong><span class="sub"><code>decompose=true</code> 讓 Symphony 自己跑 plan-mode runner;post-finalize hook parse 它最後的 assistant message → JSON 子任務陣列 → fan-out children。Fenced code block 內的 marker 被忽略。kill switch <code>SYMPHONY_DECOMPOSE_ENABLED=0</code>。</span></span></li>
       </ul>
-    </section>
 
-    <!-- =============================================================== -->
-    <section class="block">
-      <h2>④ 前端 dashboard 已具備的 UI 元素</h2>
-      <div class="card">
-        <div class="head"><div class="title">TopBar (左→右)</div></div>
-        <div class="desc">
-          ● WS 狀態圓點 · <strong>Symphony</strong> 品牌字 ·
-          <strong>📁 project</strong> 下拉(Phase E2) ·
-          tracker / <strong>backend runner ?</strong> (Phase D3 explainer popover) /
-          <strong>chat LLM</strong> (browser-side,Phase D2b chat panel 用) ·
-          max_concurrent · active/released 計數 ·
-          ⛔ Stop All · 📝 Workflow · 💬 Chat ·
-          🔍 Trace (Phase E4) · 🔧 Runner (Phase D3 runtime) ·
-          🔌 LLM · ☀/☾ 主題 · ⚙ API key。
-        </div>
-      </div>
-      <div class="card">
-        <div class="head"><div class="title">Chat panel (💬,右下角浮動)</div></div>
-        <div class="desc">輸入高階目標 → 瀏覽器端 LLM 呼叫 → 取得 JSON subtasks → 可勾選預覽 → Create N cards。整個 conversation 寫入當前 project 的歷史(可重新預填)。</div>
-      </div>
-      <div class="card">
-        <div class="head"><div class="title">Trace panel (🔍,左下角浮動)</div></div>
-        <div class="desc">即時 agent event 流;依當前 project 過濾,「All projects」可暫時繞過。</div>
-      </div>
-      <div class="card">
-        <div class="head"><div class="title">IssueDrawer (點卡片開啟)</div></div>
-        <div class="desc">Overview / Events / Prompt / Hints / Workspace / Replay 六個 tab;每個 attempt 的完整事件串流都能往回看。</div>
-      </div>
-      <div class="card">
-        <div class="head"><div class="title">Light / Dark 主題</div></div>
-        <div class="desc">預設 light (warm-stone);可切到 dark。記在 localStorage。</div>
-      </div>
-    </section>
+      <h3>3.3 升級到人類 (Phase D3)</h3>
+      <p>Agent 在最後 turn 丟出 <code>[HUMAN_REQUIRED] &lt;一句話原因&gt;</code> → orchestrator 把 attempt 收成 <code>terminal_reason=needs_human</code> → 在 kanban / Tool API 都顯示 <code>blocked_for_human</code> → operator 透過 <code>resolve_human_block</code> 寫一段解決方案 hint + force-retry → 下一輪 prompt 自動帶上 hint。</p>
+      <p><strong>Prompt-injection 防護:</strong> fenced code block (<code>```...```</code> / <code>~~~...~~~</code>) 內的 marker 不會觸發 escalation,所以 agent 引用 source / docs 不會誤觸。</p>
 
-    <!-- =============================================================== -->
-    <section class="block">
-      <h2>⑤ 未實作 / 待規劃 <span class="count">(來自 post-mvp-gaps.md)</span></h2>
+      <h3>3.4 多 project / chat 對話管理 (Phase E1 → E5)</h3>
       <ul class="roadmap">
-        <li><span class="check todo">[ ]</span><span class="label"><strong>D4 / D5</strong><span class="sub">如上,autonomous-loop 還剩兩個 phase。</span></span></li>
-        <li><span class="check todo">[ ]</span><span class="label"><strong>Workspace 沙箱升級</strong><span class="sub">firecracker / gVisor / rootless Docker。目前 Phase 1 單容器只能到 container 邊界。</span></span></li>
-        <li><span class="check todo">[ ]</span><span class="label"><strong>Docker Phase 2 雙容器爆炸半徑切分</strong><span class="sub">把 opencode CLI 抽離到獨立 <code>symphony-opencode</code> service,經 HTTP/SSE 溝通(<code>opencode serve</code>)。</span></span></li>
-        <li><span class="check todo">[ ]</span><span class="label"><strong>OpenTelemetry tracing</strong><span class="sub">目前 W3C trace_id 只是 correlation id,未產生 span tree。</span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>E1 — Projects 基礎建設</strong><span class="sub">SQLite <code>projects</code> 表 (id / name / created_at / archived_at);Tool API 收 <code>project_id</code>;subtask fan-out 繼承;新 <code>/api/v1/projects</code> CRUD REST。</span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>E2 — Project selector</strong><span class="sub">TopBar 左側下拉 (All / 各 project / + New);kanban 依當前 project 過濾;ChatPanel 提交時帶當前 project_id;localStorage 記憶選擇。</span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>E3 — Per-project chat 歷史</strong><span class="sub">localStorage keyed by project_id(FIFO 20 條上限);ChatPanel idle 狀態顯示「Recent in this project」+ 點 entry 預填 textarea;切 project 自動 reset。</span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>E4 — Per-project trace 觀察</strong><span class="sub">後端 WS <code>?filter=project:&lt;id&gt;</code>(legacy 沒 label 的視為 default);新 🔍 Trace 浮動面板,依當前 project 過濾 activity ring。</span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>E5 — 跨 project audit + archive</strong><span class="sub">ProjectSelector 加 📦 archive 按鈕 + 可摺疊「Archived (N)」+ ↩ unarchive;IssueCard 在「All projects」模式顯示 📁 project chip;default project 不可 archive(UI 擋掉,防止 orphan)。</span></span></li>
+      </ul>
+
+      <h3>3.5 Observability — Prometheus + W3C TraceContext</h3>
+      <p><code>GET /metrics</code> (Prometheus text format,純標準函式庫零依賴):</p>
+      <ul>
+        <li><code>symphony_attempts{state=*}</code> — 即時 attempt by RunState</li>
+        <li><code>symphony_attempts_finalised_total{terminal_reason=*}</code> — 終態統計</li>
+        <li><code>symphony_events_total</code> · <code>symphony_events_by_kind_total{kind=*}</code></li>
+        <li><code>symphony_hints_total</code> · <code>symphony_hints_pending</code></li>
+        <li><code>symphony_priority_overrides</code> · <code>symphony_attempts_state_rows</code> · <code>symphony_idempotency_keys</code></li>
+        <li><code>symphony_attempts_blocked_for_human</code> · <code>symphony_human_resolutions_total</code>(Phase D3)</li>
+      </ul>
+      <p>W3C trace_id 透過 <code>traceparent</code> HTTP header 進入 <code>submit_coding_task</code>,server 寫成 <code>trace:&lt;32hex&gt;</code> issue label + 在 response body 回給上游 → 跨行程 log correlation。</p>
+
+      <h3>3.6 四種 runner</h3>
+      <table class="fsm">
+        <thead><tr><th>Runner</th><th>用途</th><th>需要</th></tr></thead>
+        <tbody>
+          <tr><td class="kw">echo</td><td class="desc">測試 / demo,無 LLM,deterministic</td><td class="desc">無</td></tr>
+          <tr><td class="kw">opencode</td><td class="desc">主力。把 LiteLLM provider (vllm / ollama / openai / anthropic) wrapping 起來</td><td class="desc"><code>opencode</code> on PATH + LLM endpoint</td></tr>
+          <tr><td class="kw">anthropic_api</td><td class="desc">直連 <code>/v1/messages</code>(可指任意 Anthropic-compatible endpoint)</td><td class="desc"><code>ANTHROPIC_API_KEY</code> 或本地 endpoint</td></tr>
+          <tr><td class="kw">claude_cli</td><td class="desc">把 Claude Code CLI 包成 runner</td><td class="desc"><code>claude</code> on PATH + 已 login</td></tr>
+        </tbody>
+      </table>
+      <p>Phase D3 之後可以從 dashboard <code>🔧 Runner</code> 模態框即時切換,<strong>不需要</strong>改 <code>WORKFLOW.md</code> + 重啟。</p>
+
+      <h3>3.7 Persistent retry queue</h3>
+      <p>in-flight attempts SQLite 化(<code>attempts_state</code> 表),行程重啟自動 hydrate;<code>session_id</code> 保留,Claude / opencode 能延續 conversation context。</p>
+
+      <h3>3.8 緊急停止</h3>
+      <p>TopBar 紅色 <code>⛔ Stop All</code> 按鈕 / <code>POST /api/v1/emergency_stop</code> — 一鍵 abort 所有 active worker。</p>
+    </section>
+
+    <!-- ====================================================== -->
+    <section class="block" id="ui">
+      <h2>④ Dashboard UI 元素</h2>
+      <p>單一 React 19 + Tailwind 4 SPA,由 FastAPI 同步 host。下面是目前 UI 結構的概覽:</p>
+
+      <h3>4.1 TopBar (從左到右)</h3>
+      <table class="fsm">
+        <tbody>
+          <tr><td class="kw">●</td><td class="desc">WebSocket 連線狀態圓點 (open / connecting / closed)</td></tr>
+          <tr><td class="kw">Symphony</td><td class="desc">品牌字</td></tr>
+          <tr><td class="kw">📁 project</td><td class="desc">project 下拉 (E2):All / active 列表 / Archived (N) 收合區 / + New project</td></tr>
+          <tr><td class="kw">tracker · backend runner ? · chat LLM · tick</td><td class="desc">配置摘要;<code>?</code> 開 AgentExplainer popover;backend runner 名字本身是個 link,點開 BackendRunnerSettings 即時換 runner</td></tr>
+          <tr><td class="kw">max_concurrent · active · released</td><td class="desc">即時計數;<code>max_concurrent</code> 可即時編輯</td></tr>
+          <tr><td class="kw">⛔ Stop All</td><td class="desc">緊急 abort 所有 active worker</td></tr>
+          <tr><td class="kw">📝 Workflow</td><td class="desc">編輯 <code>WORKFLOW.md</code>(熱載入)</td></tr>
+          <tr><td class="kw">💬 Chat</td><td class="desc">開 ChatPanel(瀏覽器端 LLM 拆解 → 建立 kanban 卡片)</td></tr>
+          <tr><td class="kw">🔍 Trace</td><td class="desc">開 TracePanel(依當前 project 過濾的即時 agent event 流)</td></tr>
+          <tr><td class="kw">🔧 Runner</td><td class="desc">BackendRunnerSettings 模態框(D3 runtime runner swap)</td></tr>
+          <tr><td class="kw">🔌 LLM</td><td class="desc">LLMSettings(瀏覽器端 chat-LLM endpoint + Test connection)</td></tr>
+          <tr><td class="kw">☀ / ☾</td><td class="desc">light / dark 主題切換,記在 localStorage</td></tr>
+          <tr><td class="kw">⚙</td><td class="desc">設 / 清 dashboard API key</td></tr>
+        </tbody>
+      </table>
+
+      <h3>4.2 5 欄 Kanban</h3>
+      <p>Pending / Claimed / Running / Retry-Queued / Released。Pending 欄支援拖拉重排(寫入 <code>priority_overrides</code> 表)。每張 IssueCard 顯示 id / title / priority / labels / turns / cost;在「All projects」模式額外顯示 📁 project chip。</p>
+
+      <h3>4.3 IssueDrawer (點卡片開啟)</h3>
+      <ul>
+        <li><strong>Overview</strong> — 摘要 + pause/resume/abort/retry 動作</li>
+        <li><strong>Events</strong> — 完整 agent event 串流(訊息 / 工具呼叫 / 工具結果)</li>
+        <li><strong>Prompt</strong> — 渲染好的 prompt 預覽(含 hint 注入)</li>
+        <li><strong>Hints</strong> — 操作員留言;<code>resolve_human_block</code> 寫的 hint 也在這裡</li>
+        <li><strong>Workspace</strong> — 工作目錄檔案瀏覽 + 前 200 行預覽</li>
+        <li><strong>Replay</strong> — 從 SQLite 重放某個 attempt 的事件</li>
+      </ul>
+
+      <h3>4.4 ChatPanel 三個階段</h3>
+      <ol>
+        <li><strong>idle</strong> — 顯示 "Recent in this project" 歷史 + textarea;若有上一批 batch,顯示 live 進度頁尾(pending/running/done/failed/blocked-for-human 計數,點 "View parent on kanban →" 跳轉)</li>
+        <li><strong>asking-llm</strong> — 顯示 "Asking the LLM to decompose…"</li>
+        <li><strong>preview</strong> — 顯示拆好的子任務,每筆可勾選/取消;另附 raw LLM 回應 <code>&lt;details&gt;</code> 可展開</li>
+      </ol>
+    </section>
+
+    <!-- ====================================================== -->
+    <section class="block" id="roadmap">
+      <h2>⑤ 任務規劃 / Roadmap</h2>
+
+      <h3>5.1 Autonomous coding loop (Phase D)</h3>
+      <ul class="roadmap">
+        <li><span class="check done">[x]</span><span class="label"><strong>D1</strong> — subtask graph 基礎建設 <span class="sub">parent / depends_on / dispatch gate / list_tasks</span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>D2a</strong> — Path A: caller 給 <code>subtasks=[...]</code> <span class="sub">sibling-index → real task_id,單一 idempotency_key 整批</span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>D2b</strong> — Path B: Symphony 用 plan-mode runner 自己拆 <span class="sub">post-finalize hook + JSON parser + kill switch</span></span></li>
+        <li><span class="check done">[x]</span><span class="label"><strong>D3</strong> — <code>[HUMAN_REQUIRED]</code> escalation <span class="sub">marker detector + <code>blocked_for_human</code> status + <code>resolve_human_block</code> + Prometheus 指標</span></span></li>
+        <li><span class="check todo">[ ]</span><span class="label"><strong>D4</strong> — CHECKPOINT events <span class="sub">每 N turn 或 M 秒 emit progress;<code>check_task_status</code> 多回 <code>latest_checkpoint</code></span></span></li>
+        <li><span class="check todo">[ ]</span><span class="label"><strong>D5</strong> — cross-task rollup summary <span class="sub">新 <code>get_workflow_result</code> 把 parent + children 結果合併</span></span></li>
+      </ul>
+
+      <h3>5.2 Multi-project (Phase E) — 已全綠 ✅</h3>
+      <ul class="roadmap">
+        <li><span class="check done">[x]</span><span class="label">E1 schema / E2 selector / E3 chat 歷史 / E4 per-project trace / E5 archive UI</span></li>
+      </ul>
+
+      <h3>5.3 未實作 / 待規劃</h3>
+      <ul class="roadmap">
+        <li><span class="check todo">[ ]</span><span class="label"><strong>Workspace 沙箱升級</strong><span class="sub">High severity。目前單容器只到 container 邊界。升級路徑:firecracker / gVisor / rootless Docker。</span></span></li>
+        <li><span class="check todo">[ ]</span><span class="label"><strong>Docker Phase 2 雙容器拆分</strong><span class="sub">opencode CLI 抽到獨立 <code>symphony-opencode</code> service,經 opencode 內建的 <code>serve</code> HTTP/SSE 介面 — 已分析過,實作待開。</span></span></li>
+        <li><span class="check todo">[ ]</span><span class="label"><strong>OpenTelemetry tracing</strong><span class="sub">目前 W3C trace_id 只是 correlation id,未產生 span tree。Prometheus 那層已就位。</span></span></li>
+        <li><span class="check todo">[ ]</span><span class="label"><strong>Streaming chat LLM (browser-side)</strong><span class="sub">ChatPanel 現在用 <code>stream:false</code>,token-by-token rendering 尚未支援。</span></span></li>
+        <li><span class="check todo">[ ]</span><span class="label"><strong>Frontend i18n</strong><span class="sub">UI 字串目前硬寫英文,對中文 operator 不友善。</span></span></li>
         <li><span class="check todo">[ ]</span><span class="label"><strong>Dashboard 多人 RBAC</strong><span class="sub">目前單 token 全有 / 全無。</span></span></li>
-        <li><span class="check todo">[ ]</span><span class="label"><strong>Frontend i18n</strong><span class="sub">UI 字串目前硬寫英文。對中文 operator 不友善。</span></span></li>
-        <li><span class="check todo">[ ]</span><span class="label"><strong>Streaming chat LLM</strong><span class="sub">瀏覽器端 ChatPanel 目前用 <code>stream:false</code>,token-by-token rendering 尚未支援。</span></span></li>
+        <li><span class="check todo">[ ]</span><span class="label"><strong>Prompt-injection 防護 Phase 2 / C</strong><span class="sub">Phase 1 framing 已落地;token-level isolation per-runner + LLM-judge 留作高敏感場景的進階加固。</span></span></li>
+        <li><span class="check todo">[ ]</span><span class="label"><strong>Linear adapter — <code>linear_graphql</code> 動態工具</strong><span class="sub">SPEC §14 提到;只有要橋接 Linear 才需要。</span></span></li>
       </ul>
     </section>
 
-    <!-- =============================================================== -->
-    <section class="block">
-      <h2>⑥ 怎麼玩 — 30 秒驗證</h2>
-      <div class="card">
-        <div class="head"><div class="title">Track A — 純看 kanban 動(零 LLM 依賴)</div></div>
-        <div class="desc mono">
-          cp examples/WORKFLOW.demo-echo.md WORKFLOW.md<br>
-          docker compose up -d<br>
-          SYMPHONY_URL=http://localhost:17957 python examples/tool_api_client.py
-        </div>
-        <div class="lang">Card transitions Unclaimed → Claimed → Running → Released in &lt; 5 s.</div>
-      </div>
-      <div class="card">
-        <div class="head"><div class="title">Track B — 真正用 opencode 跑 LLM</div></div>
-        <div class="desc mono">
-          cp examples/WORKFLOW.docker.md WORKFLOW.md<br>
-          cp .env.example .env<br>
-          # 編輯 .env 設 OPENCODE_BASE_URL / OPENCODE_MODEL<br>
-          docker compose up -d<br>
-          開瀏覽器:http://localhost:17957
-        </div>
-      </div>
+    <!-- ====================================================== -->
+    <section class="block" id="try">
+      <h2>⑥ 怎麼玩 — 5 分鐘驗證</h2>
+
+      <h3>6.1 Track A — 零 LLM 依賴看 kanban 動</h3>
+      <pre><code>cp examples/WORKFLOW.demo-echo.md WORKFLOW.md
+docker compose up -d
+curl -fsS http://localhost:17957/healthz
+
+# 另開 terminal — Tool API 端到端 round-trip
+SYMPHONY_URL=http://localhost:17957 \
+  python examples/tool_api_client.py
+
+# 開瀏覽器看卡片
+open http://localhost:17957</code></pre>
+      <p>預期:5 秒內卡片走完 Unclaimed → Claimed → Running → Released。</p>
+
+      <h3>6.2 Track B — 真正用 opencode 跑 LLM</h3>
+      <pre><code>cp examples/WORKFLOW.docker.md WORKFLOW.md
+cp .env.example .env
+
+# 編輯 .env:
+# OPENCODE_PROVIDER=vllm
+# OPENCODE_BASE_URL=http://host.docker.internal:8000
+# OPENCODE_MODEL=Qwen/Qwen2.5-Coder-32B-Instruct
+# DASHBOARD_API_KEY=$(openssl rand -hex 32)
+
+docker compose up -d
+SYMPHONY_URL=http://localhost:17957 \
+  DASHBOARD_API_KEY=$(grep ^DASHBOARD_API_KEY .env | cut -d= -f2) \
+  python examples/tool_api_client.py</code></pre>
+      <p>預期:卡片停在 Running 整個 agent loop;點卡片打開 drawer 看到 <code>MESSAGE_DELTA</code> 跟 <code>TOOL_CALL</code> 事件;Released 後 drawer 顯示 summary / files_changed。</p>
+
+      <h3>6.3 試 D2b — Symphony 端自動拆解</h3>
+      <pre><code>curl -X POST http://localhost:17957/api/v1/tools/submit_coding_task \
+  -H "content-type: application/json" \
+  -d '{"task":"Build a TODO API with FastAPI + integration tests","repo":"memory","decompose":true}'
+
+# parent 跑完 plan-mode runner 後,Symphony 自動建立 N 個 child
+# 在 kanban 上會看到 parent → 多個 child 自動依序排程</code></pre>
+
+      <h3>6.4 試 D3 — Human escalation</h3>
+      <p>讓 LLM 在某次 turn 結束時丟出 <code>[HUMAN_REQUIRED] need a design decision on cache invalidation</code> → 卡片變 <code>blocked_for_human</code>。Operator 從 Tool API 回應:</p>
+      <pre><code>curl -X POST http://localhost:17957/api/v1/tools/resolve_human_block \
+  -d '{"task_id":"tsk_...","resolution_hint":"use redis TTL, not manual invalidation"}'
+
+# 卡片重新進 Retry-Queued → 下一輪 prompt 自動帶上 hint
+</code></pre>
+
+      <h3>6.5 試 E2 — Multi-project</h3>
+      <p>TopBar 點 <code>project: All projects ▾</code> → <code>+ New project…</code> → 建立 "Alpha" → 切到 Alpha → ChatPanel 送一個 goal → 拆出的卡片都自動帶 <code>project:&lt;Alpha id&gt;</code> label。切回 "All projects" 模式,每張卡會顯示 📁 project chip。</p>
     </section>
 
     <footer class="page">
-      <p>本頁從 <code>docs/MVP-STATUS.zh-TW.md</code> + <code>docs/todolist/post-mvp-gaps.md</code> 摘要而來。當數字 / 表格隨 commit 變動,以那兩份檔案為準。</p>
+      <p>權威來源:<a href="MVP-STATUS.zh-TW.md">MVP-STATUS.zh-TW.md</a> · <a href="todolist/post-mvp-gaps.md">post-mvp-gaps.md</a> · <a href="API-REFERENCE.zh-TW.md">API-REFERENCE.zh-TW.md</a> · <a href="guide/user-manual.zh-TW.md">user-manual.zh-TW.md</a></p>
+      <p>這份頁面從上述四份檔案自動匯整。當 repo 變動,以那邊為準。</p>
     </footer>
   </div>
 
@@ -360,6 +649,19 @@
       btn.addEventListener("click", function () {
         var cur = document.documentElement.dataset.theme || "light";
         apply(cur === "dark" ? "light" : "dark");
+      });
+
+      // Smooth-scroll TOC links with sticky offset
+      document.querySelectorAll('nav.toc a[href^="#"]').forEach(function (a) {
+        a.addEventListener("click", function (e) {
+          var id = a.getAttribute("href").slice(1);
+          var el = document.getElementById(id);
+          if (el) {
+            e.preventDefault();
+            el.scrollIntoView({ behavior: "smooth", block: "start" });
+            history.replaceState(null, "", "#" + id);
+          }
+        });
       });
     })();
   </script>
