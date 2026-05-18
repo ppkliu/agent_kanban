@@ -24,7 +24,8 @@ export type TerminalReasonStr =
   | "stall_timeout"
   | "user_input_required"
   | "error"
-  | "aborted";
+  | "aborted"
+  | "needs_human";  // Phase D3 — agent escalated via [HUMAN_REQUIRED]
 
 export interface IssueDTO {
   id: string;
