@@ -11,8 +11,8 @@
 > container for code generation). The default tracker is the project's own
 > SQLite-backed kanban — there is no required cloud or SaaS dependency. Local
 > LLMs are the primary runtime target; Claude Code CLI, Anthropic API, and
-> Codex are documented secondary backends. Pure Python 3.10+, **256 unit tests
-> green** (29 MVP core + 6 prompt-injection framing + 65 dashboard + 11 runner + 59 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 8 metrics + 22 Linear adapter + 1 ClaudeCLI override + 2 D1 parent-gate + 13 D2b decompose parser), spec-aligned React
+> Codex are documented secondary backends. Pure Python 3.10+, **272 unit tests
+> green** (29 MVP core + 6 prompt-injection framing + 65 dashboard + 11 runner + 66 tool API + 11 stage + 10 task_result + 9 repo_inspect + 10 mode + 8 metrics + 22 Linear adapter + 1 ClaudeCLI override + 2 D1 parent-gate + 13 D2b decompose parser + 9 D3 escalation parser), spec-aligned React
 > observatory, all four pluggable runners selectable from a single line of
 > `WORKFLOW.md`.
 
@@ -192,7 +192,7 @@ To swap models without rebuilding the container: edit `.env`, run
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 256 tests = 29 MVP core + 6 prompt-injection + 65 dashboard + 11 runner + 59 tool API + 30 phase B helpers + 11 mode/override + 8 metrics + 22 Linear + 2 D1 parent-gate + 13 D2b decompose parser
+# 272 tests = 29 MVP core + 6 prompt-injection + 65 dashboard + 11 runner + 66 tool API + 30 phase B helpers + 11 mode/override + 8 metrics + 22 Linear + 2 D1 parent-gate + 13 D2b decompose parser + 9 D3 escalation parser
 .venv/bin/python -m pytest
 
 # self-contained end-to-end demo (no external API, no Docker)
@@ -535,7 +535,7 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 256 tests
+├── tests/                     # 272 tests
 │   ├── conftest.py
 │   ├── test_workflow.py                # 13  (7 + 6 prompt-injection framing)
 │   ├── test_workspace.py               # 8
@@ -545,14 +545,15 @@ agent_kanban/
 │   ├── test_dashboard_orchestrator.py  # 6
 │   ├── test_dashboard_server.py        # 17  (12 + 1 state_snapshot WS push + 2 runner-swap + 2 E4 project WS filter)
 │   ├── test_dashboard_extras.py        # 17  (13 + 4 emergency stop)
-│   ├── test_tool_api.py                # 59  (Phase A/B + idempotency + rate limit + W3C trace_id + D1 subtask graph + D2a Path A + E1 projects + D2b decompose flow)
+│   ├── test_tool_api.py                # 66  (Phase A/B + idempotency + rate limit + W3C trace_id + D1 subtask graph + D2a Path A + E1 projects + D2b decompose flow + D3 needs-human flow)
 │   ├── test_stage.py                   # 11  (Phase B stage translator)
 │   ├── test_task_result.py             # 10  (Phase B result derivation)
 │   ├── test_repo_inspect.py            # 9   (Phase B inspect_repo helpers)
 │   ├── test_mode.py                    # 11  (Phase B mode whitelist)
 │   ├── test_metrics.py                 # 8   (Prometheus /metrics endpoint)
 │   ├── test_linear_tracker.py          # 22  (Linear GraphQL adapter)
-│   └── test_decompose.py               # 13  (D2b backend decomposition parser)
+│   ├── test_decompose.py               # 13  (D2b backend decomposition parser)
+│   └── test_escalation.py              # 9   (D3 needs-human marker detector)
 └── examples/
     ├── WORKFLOW.md            # full example (local kanban + opencode)
     ├── WORKFLOW.docker.md     # docker-friendly memory + opencode default
@@ -563,7 +564,7 @@ agent_kanban/
 ## Run log
 ```bash
 $ .venv/bin/python -m pytest
-======================== 256 passed in 10.51s ========================
+======================== 272 passed in 10.51s ========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (3 workspaces created, marker files written)

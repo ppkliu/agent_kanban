@@ -1,7 +1,7 @@
 # Symphony MVP — 完成度狀態
 
 > English: [MVP-STATUS.md](MVP-STATUS.md)
-> 審核日期:**2026-05-18** · 測試:**256 個全綠** (滾動式 — 每次影響 MVP 的 commit 後重貼)
+> 審核日期:**2026-05-18** · 測試:**272 個全綠** (滾動式 — 每次影響 MVP 的 commit 後重貼)
 
 30 秒內回答「Symphony 的 MVP 框架做完了嗎?」想看深入文件就讀
 [使用說明書](guide/user-manual.zh-TW.md)、[`/api/v1/*` API reference](API-REFERENCE.zh-TW.md);
@@ -49,7 +49,8 @@ MVP 框架的契約:**對上游 agent 暴露 6 個語意化 tool、opt-in dashbo
 | Phase E4 Per-project trace 監控 — 後端 WS `?filter=project:<id>` (legacy issue 退到 `default`);TopBar 新 `🔍 Trace` 開浮動面板,客戶端依 snapshot 過濾 activity ring | ✅ | 本批 commits | `pytest tests/test_dashboard_server.py -k project_filter; cd frontend && npm test -- TracePanel.test` |
 | Phase E5 跨 project audit + archive — ProjectSelector 加 📦 archive 按鈕 + 可摺疊「Archived (N)」+ ↩ unarchive;IssueCard 在「All projects」模式顯示 📁 project chip | ✅ | 本批 commits | `cd frontend && npm test -- ProjectSelector.test IssueCard.test` |
 | Phase D2b Symphony 端拆解 — `submit_coding_task` 收 `decompose=true`,parent 跑完後 parse 它的 plan-mode 輸出再 fan-out children(走跟 Path A 一樣的流程);環境變數 `SYMPHONY_DECOMPOSE_ENABLED=0` 可全域關掉 | ✅ | 本批 commits | `pytest tests/test_tool_api.py tests/test_decompose.py -k decompose` |
-| 自含測試套件 (不需 LLM / 不需 GitHub) | ✅ | 256 tests | `.venv/bin/python -m pytest` |
+| Phase D3 NEEDS_HUMAN 升級 — agent 用 `[HUMAN_REQUIRED] <reason>` 結束 turn → orchestrator 標 `needs_human`(fenced code block 內標記會被忽略);status 變 `blocked_for_human`;新 `resolve_human_block` 端點記 hint + force-retry | ✅ | 本批 commits | `pytest tests/test_escalation.py tests/test_tool_api.py -k 'human or needs_human'` |
+| 自含測試套件 (不需 LLM / 不需 GitHub) | ✅ | 272 tests | `.venv/bin/python -m pytest` |
 | REST + WebSocket Bearer 認證 | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
 **結論**:README 跟使用說明書裡的每個行為承諾,**都有 code 或 test 撐住**
@@ -82,7 +83,7 @@ MVP 框架的契約:**對上游 agent 暴露 6 個語意化 tool、opt-in dashbo
 # 1. Clone + 跑測試 (不需 LLM、不需 Docker)
 git clone <this-repo> && cd agent_kanban
 uv venv && uv pip install -e ".[dev,dashboard]"
-.venv/bin/python -m pytest                  # 預期:256 passed
+.venv/bin/python -m pytest                  # 預期:272 passed
 
 # 2. 拉起整套框架
 cp examples/WORKFLOW.docker.md WORKFLOW.md
@@ -107,10 +108,10 @@ open http://localhost:17957
 |---|---|
 | 審核日期 | **2026-05-18** |
 | Commit | 滾動式 — 最新 checkpoint 看 `git log` |
-| 測試通過數 | **256** (`pytest -q`) |
+| 測試通過數 | **272** (`pytest -q`) |
 | 前端測試 | **93** (`npm test`) |
 | Docker image | `symphony-dashboard:dev` (Phase 1 單容器) |
-| Tool API 上線端點 | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task / list_tasks` |
+| Tool API 上線端點 | `list_repos / inspect_repo / submit_coding_task / check_task_status / get_task_result / cancel_task / list_tasks / resolve_human_block` |
 
 > 動到 `symphony_mvp/` / `tests/` / `Dockerfile` / `docker-compose.yml`
 > 後請重跑這份 audit,讓 checklist 保持誠實。

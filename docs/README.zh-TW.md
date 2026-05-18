@@ -2,7 +2,7 @@
 
 > [English README →](../README.md)
 
-> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**256 個單元測試全綠**(MVP 核心 29 + 提示注入防護 6 + Dashboard 65 + Runner 11 + Tool API 59 + Phase B helpers 30 + mode 11 + metrics 8 + Linear 22 + D1 parent-gate 2 + D2b decompose parser 13),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
+> 這是 [openai/symphony](https://github.com/openai/symphony) SPEC.md 的 Python 實作,圍繞三個原則設計:**Local-first**(資料與排程狀態都不離開本機)、**Autonomy-first**(Dashboard 是用來「觀察」長時間自主運行的 agent,不是用來逐步介入指揮的)、以及 **Docker 化部署**(一個 compose 檔同時帶起 dashboard 與沙箱化的 [opencode](https://github.com/sst/opencode) 容器來做代碼生成)。預設 tracker 是本專案自帶的 SQLite 看板,**沒有任何雲端或 SaaS 強制依賴**。本地 LLM 是主要運行目標;Claude Code CLI / Anthropic API / Codex 都是**次選**的 cloud backend。純 Python 3.10+,**272 個單元測試全綠**(MVP 核心 29 + 提示注入防護 6 + Dashboard 65 + Runner 11 + Tool API 66 + Phase B helpers 30 + mode 11 + metrics 8 + Linear 22 + D1 parent-gate 2 + D2b decompose parser 13 + D3 escalation parser 9),對齊 spec 的 React 觀察台,四種可替換 runner 都用 `WORKFLOW.md` 一行切換。
 
 ## 架構總覽
 
@@ -177,7 +177,7 @@ SYMPHONY_URL=http://localhost:17957 \
 uv venv
 uv pip install -e ".[dev,dashboard]"
 
-# 256 = MVP 29 + 提示注入 6 + Dashboard 65 + Runner 11 + Tool API 59 + Phase B helpers 30 + mode 11 + metrics 8 + Linear 22 + D1 parent-gate 2 + D2b decompose parser 13
+# 272 = MVP 29 + 提示注入 6 + Dashboard 65 + Runner 11 + Tool API 66 + Phase B helpers 30 + mode 11 + metrics 8 + Linear 22 + D1 parent-gate 2 + D2b decompose parser 13 + D3 escalation parser 9
 .venv/bin/python -m pytest
 
 # 純記憶體 demo,無外部依賴
@@ -482,7 +482,7 @@ agent_kanban/
 │           ├── WorkflowEditor.tsx
 │           ├── TopBar.tsx
 │           └── FilterBar.tsx
-├── tests/                     # 256 tests
+├── tests/                     # 272 tests
 │   ├── conftest.py
 │   ├── test_workflow.py       # 13 tests (7 + 6 prompt-injection framing)
 │   ├── test_workspace.py      # 8 tests
@@ -492,14 +492,15 @@ agent_kanban/
 │   ├── test_dashboard_orchestrator.py  # 6 tests
 │   ├── test_dashboard_server.py        # 17 tests (12 + 1 state_snapshot WS push + 2 runner-swap + 2 E4 project WS filter)
 │   ├── test_dashboard_extras.py        # 17 tests (13 + 4 emergency stop)
-│   ├── test_tool_api.py                # 59 tests (Phase A/B + idempotency + rate limit + W3C trace_id + D1 subtask graph + D2a Path A + E1 projects + D2b decompose flow)
+│   ├── test_tool_api.py                # 66 tests (Phase A/B + idempotency + rate limit + W3C trace_id + D1 subtask graph + D2a Path A + E1 projects + D2b decompose flow + D3 needs-human flow)
 │   ├── test_stage.py                   # 11 tests (Phase B stage translator)
 │   ├── test_task_result.py             # 10 tests (Phase B result derivation)
 │   ├── test_repo_inspect.py            # 9 tests  (Phase B inspect_repo helpers)
 │   ├── test_mode.py                    # 11 tests (Phase B mode whitelist)
 │   ├── test_metrics.py                 # 8 tests  (Prometheus /metrics endpoint)
 │   ├── test_linear_tracker.py          # 22 tests (Linear GraphQL adapter)
-│   └── test_decompose.py               # 13 tests (D2b backend decomposition parser)
+│   ├── test_decompose.py               # 13 tests (D2b backend decomposition parser)
+│   └── test_escalation.py              # 9 tests  (D3 needs-human marker detector)
 └── examples/
     ├── WORKFLOW.md            # 完整範例 (本機 kanban + opencode)
     ├── WORKFLOW.docker.md     # Docker 友善版預設 (memory + opencode)
@@ -511,7 +512,7 @@ agent_kanban/
 
 ```bash
 $ .venv/bin/python -m pytest
-======================== 256 passed in 10.51s ========================
+======================== 272 passed in 10.51s ========================
 
 $ .venv/bin/python examples/demo_echo.py
 ... (正常完成,3 個 workspace 都建立並寫入 marker 檔)
