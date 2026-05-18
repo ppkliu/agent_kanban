@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import { useProjectStore, effectiveSubmitProjectId } from "../projectStore";
 import { api } from "../api/client";
@@ -15,6 +15,7 @@ import {
   newConversationId,
   type ChatConversation,
 } from "../chatHistory";
+import type { ColumnKey } from "../api/types";
 
 interface Props {
   open: boolean;
@@ -29,15 +30,27 @@ interface PreviewRow {
 
 type Phase = "idle" | "asking-llm" | "preview" | "submitting";
 
+interface LastBatch {
+  parent_task_id: string;
+  goal: string;
+  subtask_count: number;
+  /** Wall-clock the batch was created — used to suppress the panel for
+   * old batches that the user dismissed and came back later. */
+  created_at: number;
+}
+
 export default function ChatPanel({ open, onClose }: Props) {
   const setNotice = useStore((s) => s.setNotice);
   const refresh = useStore((s) => s.refresh);
+  const snapshot = useStore((s) => s.snapshot);
+  const selectIssue = useStore((s) => s.selectIssue);
   const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
 
   const [goal, setGoal] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [rawLLMResponse, setRawLLMResponse] = useState<string>("");
+  const [lastBatch, setLastBatch] = useState<LastBatch | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Per-project conversation history loaded from localStorage. Recomputed
@@ -58,6 +71,7 @@ export default function ChatPanel({ open, onClose }: Props) {
     setPreview([]);
     setRawLLMResponse("");
     setPhase("idle");
+    setLastBatch(null);
     abortRef.current?.abort();
     abortRef.current = null;
   }, [projectKey]);
@@ -69,6 +83,46 @@ export default function ChatPanel({ open, onClose }: Props) {
       abortRef.current = null;
     }
   }, [open]);
+
+  // Live status counts for the last-created batch, derived from the
+  // store's snapshot. Updates automatically as the WS pushes new
+  // state_snapshot messages while the children dispatch and finish.
+  // `parent:<id>` label is the joining key (matches the kanban filter
+  // logic in KanbanBoard).
+  const batchCounts = useMemo(() => {
+    if (!lastBatch || !snapshot) return null;
+    const parentLabel = `parent:${lastBatch.parent_task_id}`;
+    const out: Record<ColumnKey, number> = {
+      pending: 0,
+      claimed: 0,
+      running: 0,
+      retry_queued: 0,
+      released: 0,
+    };
+    let blocked_for_human = 0;
+    let failed = 0;
+    let done = 0;
+    for (const [col, entries] of Object.entries(snapshot.columns)) {
+      for (const entry of entries) {
+        if (!(entry.issue.labels ?? []).includes(parentLabel)) continue;
+        out[col as ColumnKey] += 1;
+        if (col === "released") {
+          const tr = entry.attempt?.terminal_reason ?? "";
+          if (tr === "needs_human") blocked_for_human += 1;
+          else if (
+            tr === "agent_finished" ||
+            tr === "handoff" ||
+            tr === "tracker_terminal"
+          ) {
+            done += 1;
+          } else if (tr) {
+            failed += 1;
+          }
+        }
+      }
+    }
+    return { ...out, done, failed, blocked_for_human };
+  }, [lastBatch, snapshot]);
 
   if (!open) return null;
 
@@ -166,6 +220,15 @@ export default function ChatPanel({ open, onClose }: Props) {
         subtasks_created: subtasks.length,
       });
       setHistory(updated);
+      // Latch this batch so the panel shows a live status footer
+      // (counts derived from useStore.snapshot via the project label
+      // `parent:<id>`). User can dismiss with the Done button.
+      setLastBatch({
+        parent_task_id: r.task_id,
+        goal: goal.trim(),
+        subtask_count: subtasks.length,
+        created_at: Date.now(),
+      });
       void refresh();
       setGoal("");
       setPreview([]);
@@ -276,6 +339,72 @@ export default function ChatPanel({ open, onClose }: Props) {
           </div>
         ) : null}
       </div>
+
+      {/* Phase D2b / E observability — live counts for the last-created
+          batch. Reads the store's snapshot so as agents dispatch + finish
+          the numbers update in real time without any extra plumbing.
+          Click a row to drill into the parent issue's drawer. */}
+      {lastBatch && batchCounts && phase === "idle" ? (
+        <div className="border-t border-zinc-800 px-4 py-2 bg-zinc-800/30 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-zinc-400 truncate" title={lastBatch.goal}>
+              <span className="text-zinc-200">▸</span> Last batch ·{" "}
+              <span className="text-zinc-200">
+                {lastBatch.subtask_count} task
+                {lastBatch.subtask_count === 1 ? "" : "s"}
+              </span>
+            </div>
+            <button
+              onClick={() => setLastBatch(null)}
+              className="text-zinc-500 hover:text-zinc-200"
+              title="Dismiss live status footer"
+              aria-label="Dismiss last-batch status"
+            >
+              ×
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] mt-1 font-mono">
+            <span className="text-zinc-400">
+              pending <span className="text-zinc-200">{batchCounts.pending}</span>
+            </span>
+            <span className="text-zinc-400">
+              running <span className="text-emerald-300">{batchCounts.running + batchCounts.claimed}</span>
+            </span>
+            <span className="text-zinc-400">
+              done <span className="text-emerald-300">{batchCounts.done}</span>
+            </span>
+            {batchCounts.failed > 0 ? (
+              <span className="text-zinc-400">
+                failed <span className="text-rose-300">{batchCounts.failed}</span>
+              </span>
+            ) : null}
+            {batchCounts.blocked_for_human > 0 ? (
+              <span className="text-zinc-400">
+                blocked-for-human{" "}
+                <span className="text-amber-300">
+                  {batchCounts.blocked_for_human}
+                </span>
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2 mt-1.5 text-[10px]">
+            <button
+              onClick={() => {
+                selectIssue(lastBatch.parent_task_id);
+                onClose();
+              }}
+              className="text-emerald-300 hover:underline"
+              title="Open the parent task on the kanban"
+            >
+              View parent on kanban →
+            </button>
+            <span className="text-zinc-600">·</span>
+            <span className="text-zinc-500 font-mono truncate">
+              {lastBatch.parent_task_id}
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       <div className="border-t border-zinc-800 px-3 py-2">
         <textarea
