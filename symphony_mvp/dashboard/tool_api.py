@@ -287,6 +287,31 @@ class CancelTaskOut(BaseModel):
     task_id: str
 
 
+class ResolveHumanBlockIn(BaseModel):
+    task_id: str
+    resolution_hint: str = Field(
+        min_length=1,
+        max_length=8000,
+        description=(
+            "Operator's response to the agent's escalation. Recorded as a "
+            "hint and injected into the next attempt's prompt so the agent "
+            "sees what the human decided."
+        ),
+    )
+    author: str = Field(
+        default="human-resolver",
+        max_length=64,
+        description="Display name for the recorded hint (audit trail).",
+    )
+
+
+class ResolveHumanBlockOut(BaseModel):
+    ok: bool
+    task_id: str
+    hint_id: int
+    re_queued: bool
+
+
 class ListTasksIn(BaseModel):
     parent_task_id: Optional[str] = Field(
         default=None,
@@ -1003,6 +1028,54 @@ def post_cancel_task(
         body.task_id, message=body.reason or "operator cancelled via tool api"
     )
     return CancelTaskOut(ok=True, was_running=was_running, task_id=body.task_id)
+
+
+@tool_router.post(
+    "/resolve_human_block",
+    response_model=ResolveHumanBlockOut,
+    summary="Unblock a task the agent escalated via [HUMAN_REQUIRED]",
+    description=(
+        "Operator resolution for a task whose agent ended in "
+        "`terminal_reason: needs_human`. Records the supplied resolution "
+        "as a hint (visible to the next attempt's prompt) and force-retries "
+        "the attempt so the agent picks up where it left off, this time "
+        "with the human's answer in context. Returns 404 if the task "
+        "doesn't exist; 409 if the task is not in the `blocked_for_human` "
+        "state (caller used the wrong endpoint)."
+    ),
+)
+def post_resolve_human_block(
+    body: ResolveHumanBlockIn, request: Request
+) -> ResolveHumanBlockOut:
+    state = _state(request)
+    att = state.orch._attempts.get(body.task_id)  # noqa: SLF001
+    if att is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no attempt for task_id {body.task_id!r}",
+        )
+    if att.state != RunState.RELEASED or att.terminal_reason != TerminalReason.NEEDS_HUMAN:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"task {body.task_id!r} is not blocked_for_human "
+                f"(state={att.state.value}, terminal_reason="
+                f"{att.terminal_reason.value if att.terminal_reason else None})"
+            ),
+        )
+    hint_id = state.bridge.add_hint(
+        body.task_id, body.author, body.resolution_hint
+    )
+    re_queued = state.orch.force_retry(body.task_id)
+    # Phase D3 telemetry — operator visibility of resolution count.
+    if hasattr(state.bridge, "record_human_resolution"):
+        state.bridge.record_human_resolution(body.task_id)
+    return ResolveHumanBlockOut(
+        ok=True,
+        task_id=body.task_id,
+        hint_id=hint_id,
+        re_queued=re_queued,
+    )
 
 
 @tool_router.post(
