@@ -37,6 +37,7 @@ the design rationale.
 | `POST` | `/api/v1/tools/check_task_status` | Poll status + coarse stage |
 | `POST` | `/api/v1/tools/get_task_result` | Fetch structured result of a completed task |
 | `POST` | `/api/v1/tools/cancel_task` | Abort a running task (idempotent) |
+| `POST` | `/api/v1/tools/resolve_human_block` | Unblock a task whose agent escalated via `[HUMAN_REQUIRED]` (records an operator hint + force-retries) |
 | `POST` | `/api/v1/tools/list_tasks` | Enumerate Tool API tasks with optional `parent_task_id` + `status` filter |
 
 ### Example round-trip
@@ -123,8 +124,26 @@ For a runnable end-to-end demo using only the stdlib see
   Disable globally with env `SYMPHONY_DECOMPOSE_ENABLED=0` (400 with
   a clear "decomposition disabled" error). Mutually exclusive with
   `subtasks=[...]`.
+- **`[HUMAN_REQUIRED] <reason>` escalation marker** (D3): any agent
+  (echo / opencode / anthropic_api / claude_cli) can end its turn with
+  the literal text `[HUMAN_REQUIRED] <one-sentence reason>` on its own
+  line — the orchestrator detects it during release and finalises the
+  attempt with `terminal_reason=needs_human` instead of `agent_finished`.
+  Markers inside fenced code blocks (`` ``` `` / `~~~`) are ignored so
+  quoted source / docs don't accidentally escalate. The attempt's status
+  becomes `blocked_for_human`, and any pending children of the parent
+  are frozen at the dispatch gate (parent-failure semantics) until the
+  block is resolved.
+- **`resolve_human_block`**: operator's response endpoint. Body
+  `{task_id, resolution_hint, author?}` records the resolution as a hint
+  (audit-trailed with `author` defaulting to `"human-resolver"`) and
+  force-retries the task — the agent picks up where it left off, with
+  the hint injected into the next attempt's prompt. Returns 404 if the
+  task doesn't exist; 409 if it's not in `blocked_for_human`.
 - **`status`** (in `check_task_status`): `pending` / `running` / `done` /
-  `failed` / `cancelled`.
+  `failed` / `cancelled` / `blocked_for_human` (Phase D3 — agent declared
+  `[HUMAN_REQUIRED]` in its final message; unblock via
+  `resolve_human_block`).
 - **`stage`** (in `check_task_status`): `queued` / `exploring_codebase` /
   `modifying_files` / `running_tests` / `summarising` / `done` /
   `failed` / `cancelled` — translated from the agent event stream.
