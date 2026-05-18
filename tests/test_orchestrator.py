@@ -213,6 +213,51 @@ def test_parent_success_does_not_hold_child(tmp_path: Path) -> None:
     assert orch._attempts.get(child.id) is not None  # noqa: SLF001
 
 
+def test_checkpoint_markers_emit_synthetic_events(tmp_path: Path) -> None:
+    """Phase D4: when a runner's ``MESSAGE_DELTA`` text contains
+    ``[CHECKPOINT]`` markers, the orchestrator fans synthetic
+    ``CHECKPOINT`` events through the same listener chain so the bridge
+    can persist them and the live UI can surface them."""
+    issue = _make_issue("MT-CKPT")
+    runner = EchoRunner(
+        final_message=(
+            "step 1 done.\n"
+            "[CHECKPOINT] half way\n"
+            "more progress.\n"
+            "[CHECKPOINT step=3/5] running tests\n"
+        )
+    )
+    orch, _, _ = _setup(tmp_path, runner=runner, issues=[issue])
+
+    captured: list[tuple[str, str, dict]] = []
+    orch.add_event_listener(
+        lambda iid, ev: captured.append((iid, ev.kind.value, dict(ev.data)))
+    )
+
+    _run_until_released(orch, issue.id)
+
+    checkpoints = [c for c in captured if c[1] == "checkpoint"]
+    assert [(c[0], c[2]) for c in checkpoints] == [
+        (issue.id, {"message": "half way"}),
+        (issue.id, {"message": "running tests", "step": 3, "total": 5}),
+    ]
+
+
+def test_checkpoint_marker_absent_when_no_marker_in_text(tmp_path: Path) -> None:
+    """No marker in any MESSAGE_DELTA text → no CHECKPOINT events
+    synthesised. Guards against false positives from the hot path."""
+    issue = _make_issue("MT-NO-CKPT")
+    orch, _, _ = _setup(
+        tmp_path,
+        runner=EchoRunner(final_message="just regular progress, nothing special"),
+        issues=[issue],
+    )
+    captured: list[str] = []
+    orch.add_event_listener(lambda _iid, ev: captured.append(ev.kind.value))
+    _run_until_released(orch, issue.id)
+    assert "checkpoint" not in captured
+
+
 def test_state_snapshot_serializable(tmp_path: Path) -> None:
     import json
     issue = _make_issue("MT-SNAP")
