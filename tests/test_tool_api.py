@@ -1310,6 +1310,180 @@ def test_decompose_hook_emits_error_event_on_malformed_json(app_ctx) -> None:
     assert "decomposition parse failed" in error_events[0]["data"]["message"]
 
 
+# --------------------------------------------------------------------------- #
+# Phase D3 — NEEDS_HUMAN escalation                                            #
+# --------------------------------------------------------------------------- #
+
+def test_echo_runner_with_human_required_marker_releases_as_needs_human(
+    app_ctx,
+) -> None:
+    """When an agent ends its turn with `[HUMAN_REQUIRED] <reason>`, the
+    orchestrator detects the marker and finalises the attempt with
+    ``TerminalReason.NEEDS_HUMAN`` (not AGENT_FINISHED)."""
+    from symphony_mvp.agent_runner import EchoRunner
+    from symphony_mvp.models import TerminalReason
+    orch = app_ctx["orch"]
+    orch.runner = EchoRunner(
+        final_message="I made some progress but [HUMAN_REQUIRED] need scope clarification"
+    )
+    r = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "ambiguous goal", "repo": "memory"},
+    )
+    task_id = r.json()["task_id"]
+    _run_until_released(orch, task_id)
+    att = orch._attempts.get(task_id)  # noqa: SLF001
+    assert att is not None
+    assert att.terminal_reason == TerminalReason.NEEDS_HUMAN
+
+
+def test_check_task_status_reports_blocked_for_human(app_ctx) -> None:
+    from symphony_mvp.agent_runner import EchoRunner
+    orch = app_ctx["orch"]
+    orch.runner = EchoRunner(
+        final_message="[HUMAN_REQUIRED] need a design decision on caching"
+    )
+    submit = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "design caching", "repo": "memory"},
+    )
+    task_id = submit.json()["task_id"]
+    _run_until_released(orch, task_id)
+    r = app_ctx["client"].post(
+        "/api/v1/tools/check_task_status", json={"task_id": task_id}
+    )
+    body = r.json()
+    assert body["status"] == "blocked_for_human"
+    assert body["stage"] == "blocked_for_human"
+
+
+def test_marker_inside_fenced_code_block_does_not_escalate(app_ctx) -> None:
+    """Prompt-injection defence: an agent quoting source / docs that
+    happen to contain `[HUMAN_REQUIRED]` should NOT trigger escalation."""
+    from symphony_mvp.agent_runner import EchoRunner
+    from symphony_mvp.models import TerminalReason
+    orch = app_ctx["orch"]
+    orch.runner = EchoRunner(
+        final_message=(
+            "I implemented the feature. Here's a code snippet I referenced:\n"
+            "```\n"
+            "if condition: print('[HUMAN_REQUIRED] in source')\n"
+            "```\n"
+            "Done."
+        )
+    )
+    submit = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "quote some code", "repo": "memory"},
+    )
+    task_id = submit.json()["task_id"]
+    _run_until_released(orch, task_id)
+    att = orch._attempts.get(task_id)  # noqa: SLF001
+    assert att.terminal_reason == TerminalReason.AGENT_FINISHED
+
+
+def test_resolve_human_block_records_hint_and_requeues(app_ctx) -> None:
+    """Operator resolution: records a hint visible to the next attempt
+    and force-retries so the agent re-runs with the resolution in context."""
+    from symphony_mvp.agent_runner import EchoRunner
+    from symphony_mvp.models import RunState, TerminalReason
+    orch = app_ctx["orch"]
+    orch.runner = EchoRunner(
+        final_message="[HUMAN_REQUIRED] which DB engine should I use"
+    )
+    submit = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "build it", "repo": "memory"},
+    )
+    task_id = submit.json()["task_id"]
+    _run_until_released(orch, task_id)
+    assert orch._attempts[task_id].terminal_reason == TerminalReason.NEEDS_HUMAN  # noqa: SLF001
+
+    r = app_ctx["client"].post(
+        "/api/v1/tools/resolve_human_block",
+        json={
+            "task_id": task_id,
+            "resolution_hint": "use sqlite, not redis",
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True
+    assert body["re_queued"] is True
+    assert body["hint_id"] > 0
+
+    # After force_retry, the attempt is back to UNCLAIMED (sentinel)
+    assert orch._attempts[task_id].state == RunState.UNCLAIMED  # noqa: SLF001
+    # The hint is recorded with author=human-resolver
+    hints = app_ctx["bridge"].list_hints(task_id)
+    assert any(
+        h["author"] == "human-resolver" and "sqlite" in h["content"]
+        for h in hints
+    )
+
+
+def test_resolve_human_block_409_when_task_not_blocked(app_ctx) -> None:
+    """resolve_human_block on a task that is NOT in NEEDS_HUMAN should
+    409 (caller used the wrong endpoint / state mismatch)."""
+    # Submit a normal task and let it finish as AGENT_FINISHED
+    from symphony_mvp.agent_runner import EchoRunner
+    orch = app_ctx["orch"]
+    orch.runner = EchoRunner()  # default: no marker → AGENT_FINISHED
+    submit = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "normal task", "repo": "memory"},
+    )
+    task_id = submit.json()["task_id"]
+    _run_until_released(orch, task_id)
+    r = app_ctx["client"].post(
+        "/api/v1/tools/resolve_human_block",
+        json={"task_id": task_id, "resolution_hint": "n/a"},
+    )
+    assert r.status_code == 409
+    assert "not blocked_for_human" in r.json()["detail"]
+
+
+def test_resolve_human_block_404_when_unknown_task(app_ctx) -> None:
+    r = app_ctx["client"].post(
+        "/api/v1/tools/resolve_human_block",
+        json={"task_id": "tsk_nope", "resolution_hint": "x"},
+    )
+    assert r.status_code == 404
+
+
+def test_needs_human_parent_holds_children_at_dispatch_gate(app_ctx) -> None:
+    """D1 + D3 integration: a parent that ends in NEEDS_HUMAN counts as
+    a 'parent failure' for the dispatch gate, so any pending children
+    stay frozen until the parent is resolved."""
+    from symphony_mvp.agent_runner import EchoRunner
+    from symphony_mvp.models import TerminalReason
+    orch = app_ctx["orch"]
+    orch.runner = EchoRunner(
+        final_message="[HUMAN_REQUIRED] need approval"
+    )
+    parent = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "parent", "repo": "memory"},
+    ).json()["task_id"]
+    _run_until_released(orch, parent)
+    assert orch._attempts[parent].terminal_reason == TerminalReason.NEEDS_HUMAN  # noqa: SLF001
+
+    # Submit a child whose parent_task_id points at the blocked parent.
+    child_resp = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={
+            "task": "child",
+            "repo": "memory",
+            "parent_task_id": parent,
+        },
+    )
+    child_id = child_resp.json()["task_id"]
+    # Run a tick — child must NOT dispatch because parent is in
+    # _PARENT_FAILURE_REASONS (NEEDS_HUMAN was just added there in D3).
+    orch.tick()
+    assert orch._attempts.get(child_id) is None  # noqa: SLF001
+
+
 def test_decompose_hook_inherits_project_id_from_parent(app_ctx) -> None:
     """Children created by the post-finalize hook carry the parent's
     explicit project_id (not just the auto-default)."""
