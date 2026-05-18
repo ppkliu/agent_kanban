@@ -176,5 +176,39 @@ def format_prometheus(
     )
     lines.append(f"symphony_idempotency_keys {idempotency_count}")
 
+    # ---- Phase D3 — NEEDS_HUMAN escalation surface --------------------- #
+    # `symphony_attempts_finalised_total{terminal_reason="needs_human"}`
+    # already gives the lifetime escalation count via the enum loop above.
+    # The two metrics below are operator-facing convenience: how many are
+    # waiting on a human RIGHT NOW (gauge) and how many resolutions have
+    # been recorded via the resolve_human_block endpoint (counter).
+    blocked_for_human_now = sum(
+        1
+        for att in (
+            orchestrator._attempts.values()  # noqa: SLF001
+        )
+        if att.state == RunState.RELEASED
+        and att.terminal_reason == TerminalReason.NEEDS_HUMAN
+    )
+    _emit_help(
+        lines, "symphony_attempts_blocked_for_human",
+        "Attempts currently in NEEDS_HUMAN — awaiting a resolve_human_block call.",
+        "gauge",
+    )
+    lines.append(f"symphony_attempts_blocked_for_human {blocked_for_human_now}")
+
+    with bridge._lock:  # noqa: SLF001
+        resolved_count = _count_table(
+            bridge._db,  # noqa: SLF001
+            "hints",
+            "author = 'human-resolver'",
+        )
+    _emit_help(
+        lines, "symphony_human_resolutions_total",
+        "Hints recorded via Tool API resolve_human_block (lifetime count).",
+        "counter",
+    )
+    lines.append(f"symphony_human_resolutions_total {resolved_count}")
+
     # Final newline so curl | tail -1 sees a clean cut.
     return "\n".join(lines) + "\n"

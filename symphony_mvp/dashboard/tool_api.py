@@ -1067,9 +1067,9 @@ def post_resolve_human_block(
         body.task_id, body.author, body.resolution_hint
     )
     re_queued = state.orch.force_retry(body.task_id)
-    # Phase D3 telemetry — operator visibility of resolution count.
-    if hasattr(state.bridge, "record_human_resolution"):
-        state.bridge.record_human_resolution(body.task_id)
+    # Phase D3 telemetry: the hint we just recorded with author=
+    # "human-resolver" is what `symphony_human_resolutions_total` counts —
+    # no extra side table needed.
     return ResolveHumanBlockOut(
         ok=True,
         task_id=body.task_id,
