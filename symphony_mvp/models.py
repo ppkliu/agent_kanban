@@ -32,6 +32,10 @@ class TerminalReason(str, Enum):
     USER_INPUT_REQUIRED = "user_input_required"  # SPEC: hard failure (high-trust default)
     ERROR = "error"  # Subprocess failure, transport error, etc.
     ABORTED = "aborted"  # Operator cancelled via dashboard. Skips retry queue.
+    NEEDS_HUMAN = "needs_human"  # Phase D3: agent declared "stuck, route to human"
+    # via a `[HUMAN_REQUIRED] <reason>` marker in its final assistant message.
+    # Unblocks via Tool API `resolve_human_block` which records an operator hint
+    # and force-retries the attempt with the hint injected into the next prompt.
 
 
 @dataclass(frozen=True)

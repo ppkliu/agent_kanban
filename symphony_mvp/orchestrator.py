@@ -46,6 +46,10 @@ _PARENT_FAILURE_REASONS: frozenset[TerminalReason] = frozenset(
         TerminalReason.MAX_TURNS,
         TerminalReason.STALL_TIMEOUT,
         TerminalReason.USER_INPUT_REQUIRED,
+        # Phase D3 — a parent waiting on human resolution must hold its
+        # children too; resuming the parent via resolve_human_block
+        # un-gates them on the next dispatch tick.
+        TerminalReason.NEEDS_HUMAN,
     }
 )
 _PARENT_LABEL_PREFIX = "parent:"
