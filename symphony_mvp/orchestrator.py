@@ -396,6 +396,28 @@ class Orchestrator:
             except Exception:  # noqa: BLE001
                 logger.exception("Event listener raised")
 
+        if event.kind == AgentEventKind.MESSAGE_DELTA:
+            self._emit_checkpoints_from(issue_id, event)
+
+    def _emit_checkpoints_from(self, issue_id: str, event: AgentEvent) -> None:
+        """Phase D4 — scan a MESSAGE_DELTA event's text for ``[CHECKPOINT]``
+        markers and fan synthetic CHECKPOINT events through the same listener
+        chain so the bridge persists them and the WS push surfaces them live."""
+        text = event.data.get("text") if isinstance(event.data, dict) else None
+        if not isinstance(text, str) or not text:
+            return
+        from .checkpoint import detect_checkpoints  # noqa: PLC0415
+        specs = detect_checkpoints(text)
+        if not specs:
+            return
+        for spec in specs:
+            cp_event = AgentEvent.now(AgentEventKind.CHECKPOINT, **spec)
+            for fn in self._on_event:
+                try:
+                    fn(issue_id, cp_event)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Event listener raised on CHECKPOINT")
+
     def _on_worker_done(self, issue_id: str, reason: str | None) -> None:
         """Worker thread finished (cleanly or with error). Map to terminal reason.
 
