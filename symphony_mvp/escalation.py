@@ -27,9 +27,12 @@ HUMAN_REQUIRED_MARKER = "[HUMAN_REQUIRED]"
 
 # Match the marker followed by an inline reason up to end-of-line. The
 # `re.IGNORECASE` lets agents that write "[Human_Required]" still trip
-# the gate; the marker is operator-facing not protocol-strict.
+# the gate; the marker is operator-facing not protocol-strict. Note the
+# horizontal-only ``[ \t]*`` (not ``\s*``) so a bare marker on its own
+# line (followed by an unrelated next line) keeps the reason empty
+# rather than swallowing the newline and capturing the next paragraph.
 _MARKER_RE = re.compile(
-    r"\[HUMAN_REQUIRED\]\s*(.+?)(?:\r?\n|$)", re.IGNORECASE
+    r"\[HUMAN_REQUIRED\][ \t]*(.*)", re.IGNORECASE
 )
 
 # Strip fenced code blocks before scanning. Both ```...``` and ~~~...~~~
