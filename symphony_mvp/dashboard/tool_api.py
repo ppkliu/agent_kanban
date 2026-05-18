@@ -59,7 +59,14 @@ tool_router = APIRouter(
 # Schemas                                                                     #
 # --------------------------------------------------------------------------- #
 
-TaskStatus = Literal["pending", "running", "done", "failed", "cancelled"]
+TaskStatus = Literal[
+    "pending",
+    "running",
+    "done",
+    "failed",
+    "cancelled",
+    "blocked_for_human",  # Phase D3 — agent declared [HUMAN_REQUIRED]
+]
 TaskStage = Literal[
     "queued",
     "running",
@@ -70,6 +77,7 @@ TaskStage = Literal[
     "done",
     "failed",
     "cancelled",
+    "blocked_for_human",  # Phase D3
 ]
 
 
@@ -430,6 +438,8 @@ def _derive_status(att: Optional[RunAttempt]) -> tuple[TaskStatus, TaskStage]:
     reason = att.terminal_reason
     if reason == TerminalReason.ABORTED:
         return "cancelled", "cancelled"
+    if reason == TerminalReason.NEEDS_HUMAN:
+        return "blocked_for_human", "blocked_for_human"
     if reason in _DONE_REASONS:
         return "done", "done"
     return "failed", "failed"
