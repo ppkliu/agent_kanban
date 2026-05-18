@@ -418,9 +418,40 @@ class Orchestrator:
             elif reason == "max_turns" or att.turns_consumed >= cfg.max_turns:
                 terminal = TerminalReason.MAX_TURNS
             else:
-                terminal = TerminalReason.AGENT_FINISHED
+                # Phase D3 — agent may have ended its turn with a
+                # `[HUMAN_REQUIRED] <reason>` marker asking to escalate.
+                # Scan the recent message_delta events for it (fenced
+                # code blocks are stripped first to defeat prompt
+                # injection). Markerless DONE → AGENT_FINISHED as before.
+                needs_human_reason = self._detect_needs_human(issue_id)
+                if needs_human_reason is not None:
+                    terminal = TerminalReason.NEEDS_HUMAN
+                    reason = f"needs_human: {needs_human_reason}"
+                else:
+                    terminal = TerminalReason.AGENT_FINISHED
             self._release(att, terminal, reason or terminal.value, _holding_lock=True)
             self._workers.pop(issue_id, None)
+
+    def _detect_needs_human(self, issue_id: str) -> str | None:
+        """Read recent message_delta events for this issue's current
+        attempt and check for the `[HUMAN_REQUIRED] <reason>` escalation
+        marker. Returns the reason text on match, ``None`` otherwise.
+        Bridge-less (headless) mode short-circuits to ``None``."""
+        if self.bridge is None:
+            return None
+        try:
+            events = self.bridge.get_recent_events(issue_id, limit=200)
+        except Exception:  # noqa: BLE001
+            return None
+        from .escalation import detect_needs_human  # noqa: PLC0415
+        parts: list[str] = []
+        for ev in events:
+            if ev.kind.value != "message_delta":
+                continue
+            text = ev.data.get("text") if isinstance(ev.data, dict) else None
+            if isinstance(text, str):
+                parts.append(text)
+        return detect_needs_human("".join(parts))
 
     def _release(
         self,
