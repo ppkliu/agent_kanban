@@ -95,10 +95,19 @@ function IssueCardInner({ entry }: Props) {
   const select = useStore((s) => s.selectIssue);
   const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
   const projects = useProjectStore((s) => s.projects);
+  const recentEvents = useStore((s) => s.recentEvents[entry.issue.id]);
   const [menuOpen, setMenuOpen] = useState(false);
   const att = entry.attempt;
   const issue = entry.issue;
   const cost = att?.cost_usd ?? 0;
+
+  const latestCheckpoint = (() => {
+    if (!recentEvents) return null;
+    for (let i = recentEvents.length - 1; i >= 0; i--) {
+      if (recentEvents[i].kind === "checkpoint") return recentEvents[i];
+    }
+    return null;
+  })();
 
   const turnsTotal = useStore((s) => s.snapshot?.config.max_turns ?? 20);
   const turns = att?.turns_consumed ?? 0;
@@ -173,6 +182,24 @@ function IssueCardInner({ entry }: Props) {
           )}
         </div>
       ) : null}
+      {latestCheckpoint ? (() => {
+        const d = latestCheckpoint.data as {
+          message?: string;
+          step?: number;
+          total?: number;
+        };
+        const stepStr =
+          d.step != null && d.total != null ? ` (${d.step}/${d.total})` : "";
+        return (
+          <div
+            className="mt-2 text-[11px] text-teal-300 truncate"
+            title={d.message ?? ""}
+          >
+            ◆ {d.message || "checkpoint"}
+            {stepStr ? <span className="text-teal-500">{stepStr}</span> : null}
+          </div>
+        );
+      })() : null}
       {att ? (
         <>
           <div className="flex items-center justify-between text-[10px] text-zinc-500 mt-2">
