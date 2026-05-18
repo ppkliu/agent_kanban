@@ -47,6 +47,8 @@ class AgentEventKind(str, Enum):
     USER_INPUT_REQUIRED = "user_input_required"
     ERROR = "error"
     DONE = "done"  # Final event — runner has finished cleanly
+    CHECKPOINT = "checkpoint"  # Phase D4 — synthesized from `[CHECKPOINT]` markers
+    # in assistant text. Carries ``{message: str, step?: int, total?: int}``.
 
 
 @dataclass
