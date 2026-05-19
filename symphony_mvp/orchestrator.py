@@ -111,6 +111,12 @@ class Orchestrator:
                                         # within an already-held lock context.
         self._on_event: list[Callable[[str, AgentEvent], None]] = []
 
+        # Monotonic tick counter — incremented at the top of every `tick()`.
+        # Surfaced via the WS heartbeat so dashboard clients can detect a
+        # stuck main loop (process alive, ticks frozen). Wraps naturally at
+        # Python int size — no rollover concerns in practice.
+        self.tick_count: int = 0
+
         # Persistent retry queue — opt-in via bridge.
         # If the bridge exposes load_active_attempts(), rehydrate _attempts
         # from SQLite so a process restart doesn't lose in-flight scheduling
@@ -172,6 +178,7 @@ class Orchestrator:
 
     # ----- Tick: 5-step sequence -----
     def tick(self) -> None:
+        self.tick_count += 1
         now = self.clock()
         self._reconcile(now)
         if not self._preflight():
