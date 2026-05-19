@@ -219,6 +219,19 @@ Upgrade: websocket
 `state_snapshot`,接著即時推送 `agent_event` / `fsm_transition` /
 `config_changed` / `workflow_reloaded` / `state_snapshot`。
 
+每 ~15s,每條 open 的 WS 還會收到一個 **heartbeat** message —
+這是給 browser SPA 看的**主要 health 訊號**(不是 `/healthz`):
+
+```json
+{"type": "heartbeat", "server_time": "2026-05-19T14:00:00+00:00", "orchestrator_ticks": 1234}
+```
+
+`orchestrator_ticks` 是 `Orchestrator.tick()` 每次遞增的 monotonic
+counter。當 process 沒掛但主迴圈卡住時,counter 會停止增加 — SPA
+盯這個值就能偵測 stuck loop,即使 WS 本身還活著。Health 判斷規則:
+heartbeat 30s 內 = **healthy**、30–90s = **degraded**、90s+ =
+**unhealthy**。Dashboard TopBar 上的 status chip 用的就是這組 threshold。
+
 Filter 語法:
 - `?filter=issue:<id>,...` — 限定特定 issue。
 - `?filter=project:<id>` — 限定特定 project (Phase E4):比對 issue 的
@@ -231,7 +244,7 @@ Filter 語法:
 
 | Method | 路徑 | 用途 | 認證 |
 |---|---|---|---|
-| `GET` | `/healthz` | Liveness 檢查;回 `{"ok": true}` | ❌ 不檢查 (刻意 — 讓 `docker compose` healthcheck 不用 token) |
+| `GET` | `/healthz` | **Liveness 後備** — 回 `{"ok": true}`。只給 docker-compose / k8s probe 用;browser SPA 的「backend healthy」主要靠 WebSocket heartbeat(見上)。Docker healthcheck 預設間隔:60s。 | ❌ 不檢查 (刻意 — 讓 `docker compose` healthcheck 不用 token) |
 | `GET` | `/metrics` | Prometheus 格式 — 9 個 metric (attempts / events / hints / idempotency 等),建議 scrape 間隔 15s | ❌ 不檢查 (Prometheus 慣例 — 用 reverse-proxy 擋) |
 | `GET` | `/openapi.json` | OpenAPI 3.1 spec,FastAPI 自動產生 | ❌ 不檢查 |
 | `GET` | `/docs` | Swagger UI (互動式 API 探索器) | ❌ 不檢查 |
