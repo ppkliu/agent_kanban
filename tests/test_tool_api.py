@@ -1512,3 +1512,253 @@ def test_decompose_hook_inherits_project_id_from_parent(app_ctx) -> None:
     assert len(children) == 2
     for c in children:
         assert f"project:{proj['id']}" in c.labels
+
+
+# --------------------------------------------------------------------------- #
+# Phase D5 — get_workflow_result rollup                                       #
+# --------------------------------------------------------------------------- #
+
+
+def _seed_task(
+    app_ctx,
+    *,
+    task_id: str,
+    title: str,
+    parent_id: str | None,
+    terminal_reason: TerminalReason | None,
+    cost_usd: float = 0.0,
+    error_message: str | None = None,
+    started_at: datetime | None = None,
+    ended_at: datetime | None = None,
+) -> Issue:
+    """Inject an Issue + (optional) finalised RunAttempt directly into the
+    orchestrator + bridge so we can build a parent + children graph
+    without running the runner. Mirrors the direct-injection pattern
+    used by ``test_get_task_result_marks_aborted_attempt_as_cancelled``."""
+    labels = ["tool-api"]
+    if parent_id is not None:
+        labels.append(f"parent:{parent_id}")
+    issue = Issue(
+        id=task_id,
+        identifier=task_id,
+        title=title,
+        description="",
+        priority=1,
+        state="open",
+        branch_name=None,
+        url="",
+        labels=labels,
+    )
+    app_ctx["tracker"].add(issue)
+    if terminal_reason is None:
+        return issue
+    now = datetime.now(timezone.utc)
+    att = RunAttempt(
+        issue_id=task_id,
+        attempt_number=1,
+        state=RunState.RELEASED,
+        started_at=started_at or (now - timedelta(seconds=10)),
+        ended_at=ended_at or now,
+        terminal_reason=terminal_reason,
+        turns_consumed=1,
+        cost_usd=cost_usd,
+        error_message=error_message,
+    )
+    app_ctx["orch"]._attempts[task_id] = att  # noqa: SLF001
+    app_ctx["bridge"].record_finalised_attempt(att)
+    return issue
+
+
+def test_get_workflow_result_404_when_task_id_unknown(app_ctx) -> None:
+    r = app_ctx["client"].post(
+        "/api/v1/tools/get_workflow_result",
+        json={"task_id": "tsk_does_not_exist"},
+    )
+    assert r.status_code == 404
+    assert "not found" in r.json()["detail"]
+
+
+def test_get_workflow_result_parent_only_returns_empty_children(app_ctx) -> None:
+    """Parent exists, no children decomposed yet → rollup returns just
+    the parent's result with `children=[]`. Status follows the parent."""
+    _seed_task(
+        app_ctx,
+        task_id="tsk_parent_lonely",
+        title="lone parent",
+        parent_id=None,
+        terminal_reason=TerminalReason.AGENT_FINISHED,
+        cost_usd=0.5,
+    )
+    r = app_ctx["client"].post(
+        "/api/v1/tools/get_workflow_result",
+        json={"task_id": "tsk_parent_lonely"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "done"
+    assert body["parent"]["task_id"] == "tsk_parent_lonely"
+    assert body["children"] == []
+    assert body["aggregate"]["cost_usd"] == pytest.approx(0.5)
+    assert body["aggregate"]["counts"] == {"done": 1}
+
+
+def test_get_workflow_result_happy_aggregates_parent_and_children(app_ctx) -> None:
+    """Parent done + 2 children done → rollup status `done`, cost summed."""
+    _seed_task(
+        app_ctx,
+        task_id="tsk_p_ok",
+        title="parent ok",
+        parent_id=None,
+        terminal_reason=TerminalReason.AGENT_FINISHED,
+        cost_usd=0.10,
+    )
+    _seed_task(
+        app_ctx,
+        task_id="tsk_c1_ok",
+        title="child 1 ok",
+        parent_id="tsk_p_ok",
+        terminal_reason=TerminalReason.AGENT_FINISHED,
+        cost_usd=0.20,
+    )
+    _seed_task(
+        app_ctx,
+        task_id="tsk_c2_ok",
+        title="child 2 ok",
+        parent_id="tsk_p_ok",
+        terminal_reason=TerminalReason.AGENT_FINISHED,
+        cost_usd=0.30,
+    )
+    r = app_ctx["client"].post(
+        "/api/v1/tools/get_workflow_result",
+        json={"task_id": "tsk_p_ok"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "done"
+    assert {c["task_id"] for c in body["children"]} == {"tsk_c1_ok", "tsk_c2_ok"}
+    assert body["aggregate"]["cost_usd"] == pytest.approx(0.60)
+    assert body["aggregate"]["counts"] == {"done": 3}
+
+
+def test_get_workflow_result_partial_in_flight_returns_running(app_ctx) -> None:
+    """Parent done + one child done + one child still running →
+    rollup status `running` (caller keeps polling)."""
+    _seed_task(
+        app_ctx,
+        task_id="tsk_p_partial",
+        title="parent partial",
+        parent_id=None,
+        terminal_reason=TerminalReason.AGENT_FINISHED,
+    )
+    _seed_task(
+        app_ctx,
+        task_id="tsk_c_done",
+        title="finished child",
+        parent_id="tsk_p_partial",
+        terminal_reason=TerminalReason.AGENT_FINISHED,
+    )
+    # Second child: tracker entry only, no attempt → status="pending"
+    _seed_task(
+        app_ctx,
+        task_id="tsk_c_pending",
+        title="not yet started",
+        parent_id="tsk_p_partial",
+        terminal_reason=None,
+    )
+    r = app_ctx["client"].post(
+        "/api/v1/tools/get_workflow_result",
+        json={"task_id": "tsk_p_partial"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "running"
+    assert body["aggregate"]["counts"]["pending"] == 1
+    assert body["aggregate"]["counts"]["done"] == 2
+
+
+def test_get_workflow_result_failure_precedence(app_ctx) -> None:
+    """One failed child outweighs many done children → status `failed`."""
+    _seed_task(
+        app_ctx,
+        task_id="tsk_p_failmix",
+        title="parent failmix",
+        parent_id=None,
+        terminal_reason=TerminalReason.AGENT_FINISHED,
+    )
+    _seed_task(
+        app_ctx,
+        task_id="tsk_c_ok1",
+        title="ok child",
+        parent_id="tsk_p_failmix",
+        terminal_reason=TerminalReason.AGENT_FINISHED,
+    )
+    _seed_task(
+        app_ctx,
+        task_id="tsk_c_err",
+        title="errored child",
+        parent_id="tsk_p_failmix",
+        terminal_reason=TerminalReason.ERROR,
+        error_message="boom",
+    )
+    r = app_ctx["client"].post(
+        "/api/v1/tools/get_workflow_result",
+        json={"task_id": "tsk_p_failmix"},
+    )
+    body = r.json()
+    assert r.status_code == 200
+    assert body["status"] == "failed"
+    assert body["aggregate"]["counts"]["failed"] == 1
+
+
+def test_get_workflow_result_block_for_human_outranks_failure(app_ctx) -> None:
+    """`blocked_for_human` is the most actionable; it wins even when a
+    sibling has failed (operator should address the block first)."""
+    _seed_task(
+        app_ctx,
+        task_id="tsk_p_mix2",
+        title="parent mix2",
+        parent_id=None,
+        terminal_reason=TerminalReason.AGENT_FINISHED,
+    )
+    _seed_task(
+        app_ctx,
+        task_id="tsk_c_block",
+        title="blocked child",
+        parent_id="tsk_p_mix2",
+        terminal_reason=TerminalReason.NEEDS_HUMAN,
+    )
+    _seed_task(
+        app_ctx,
+        task_id="tsk_c_failed",
+        title="failed child",
+        parent_id="tsk_p_mix2",
+        terminal_reason=TerminalReason.ERROR,
+    )
+    r = app_ctx["client"].post(
+        "/api/v1/tools/get_workflow_result",
+        json={"task_id": "tsk_p_mix2"},
+    )
+    body = r.json()
+    assert body["status"] == "blocked_for_human"
+    assert body["aggregate"]["counts"]["blocked_for_human"] == 1
+    assert body["aggregate"]["counts"]["failed"] == 1
+
+
+def test_get_workflow_result_response_carries_trace_and_detailed_url(
+    app_ctx,
+) -> None:
+    """Smoke: trace_id label is propagated and a detailed_url is built."""
+    submit = app_ctx["client"].post(
+        "/api/v1/tools/submit_coding_task",
+        json={"task": "rollup link smoke", "repo": "memory"},
+    )
+    task_id = submit.json()["task_id"]
+    r = app_ctx["client"].post(
+        "/api/v1/tools/get_workflow_result",
+        json={"task_id": task_id},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["detailed_url"].endswith(f"/issues/{task_id}")
+    # submit_coding_task always tags the parent with a trace label
+    assert body["trace_id"] is not None and len(body["trace_id"]) == 32
