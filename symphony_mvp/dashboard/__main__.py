@@ -116,7 +116,58 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    # Uvicorn's default access-log formatter omits a timestamp, which makes
+    # `INFO: ... "GET /healthz HTTP/1.1" 200 OK` lines hard to correlate with
+    # other timestamped events. Drop in a custom log_config that prepends
+    # ISO-ish timestamps to both uvicorn.error and uvicorn.access loggers.
+    log_config: dict[str, object] = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "format": (
+                    "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
+                ),
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+            "access": {
+                "format": (
+                    "%(asctime)s %(levelname)-7s %(client_addr)s "
+                    '"%(request_line)s" %(status_code)s'
+                ),
+                "class": "uvicorn.logging.AccessFormatter",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+        },
+        "handlers": {
+            "default": {
+                "formatter": "default",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stderr",
+            },
+            "access": {
+                "formatter": "access",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stdout",
+            },
+        },
+        "loggers": {
+            "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
+            "uvicorn.error": {"level": "INFO"},
+            "uvicorn.access": {
+                "handlers": ["access"],
+                "level": "INFO",
+                "propagate": False,
+            },
+        },
+    }
+    uvicorn.run(
+        app,
+        host=args.host,
+        port=args.port,
+        log_level="info",
+        log_config=log_config,
+    )
     return 0
 
 
