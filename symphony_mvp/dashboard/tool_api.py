@@ -1227,3 +1227,198 @@ def post_list_tasks(body: ListTasksIn, request: Request) -> ListTasksOut:
 
     summaries.sort(key=lambda s: s.created_at)
     return ListTasksOut(tasks=summaries[: body.limit])
+
+
+def _task_result_fields(
+    issue: Issue, att: Optional[RunAttempt], bridge
+) -> tuple[TaskStatus, Optional[str], Optional[str], float, Optional[int], list, list, list]:
+    """Read one task's per-attempt history + derive (status, terminal_reason,
+    summary, cost_usd, duration_ms, files_changed, blockers, follow_ups).
+    Used by the workflow rollup; mirrors what ``get_task_result`` returns for
+    a single task without going through HTTP/pydantic."""
+    status, _ = _derive_status(att)
+    history = bridge.list_attempt_history(issue.id) if bridge is not None else []
+    if not history:
+        return status, None, None, 0.0, None, [], [], []
+    last = history[-1]
+    reason = last.get("terminal_reason")
+    started = last.get("started_at")
+    ended = last.get("ended_at")
+    duration_ms: Optional[int] = None
+    if started and ended:
+        try:
+            duration_ms = _ms_between(
+                datetime.fromisoformat(started), datetime.fromisoformat(ended)
+            )
+        except Exception:  # noqa: BLE001
+            duration_ms = None
+    fallback = _build_summary_phase_a(last)
+    events = bridge.fetch_events(
+        issue.id, attempt_number=last.get("attempt_number"), limit=2000
+    )
+    derived = derive_result(last, events, fallback_summary=fallback)
+    return (
+        status,
+        reason,
+        derived.summary,
+        float(last.get("cost_usd") or 0.0),
+        duration_ms,
+        list(derived.files_changed),
+        list(derived.blockers),
+        list(derived.follow_ups),
+    )
+
+
+@tool_router.post(
+    "/get_workflow_result",
+    response_model=WorkflowResultOut,
+    summary="Aggregate one parent task + its direct children into one rollup",
+    description=(
+        "Phase D5. Walks the parent task + its direct children (one level — "
+        "both Path A and D2b produce flat subtask graphs) and returns a single "
+        "rollup: parent + children summaries, per-status counts, summed cost, "
+        "wall-clock duration, deduplicated files_changed / blockers / "
+        "follow_ups. Status precedence: blocked_for_human > failed > running "
+        "(incl. pending) > cancelled (only when ALL are cancelled) > done "
+        "(only when ALL are done). Partial rollups are returned — callers "
+        "poll this same endpoint until `status` terminalises rather than "
+        "juggling two endpoints. 404 only when `task_id` is unknown."
+    ),
+)
+def post_get_workflow_result(
+    body: WorkflowResultIn, request: Request
+) -> WorkflowResultOut:
+    state = _state(request)
+    tracker = state.orch.tracker
+    bridge = state.bridge
+
+    parent = next(
+        (i for i in tracker.all() if i.id == body.task_id), None
+    ) if hasattr(tracker, "all") else None
+    if parent is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"task_id not found: {body.task_id}",
+        )
+
+    parent_att = state.orch._attempts.get(parent.id)  # noqa: SLF001
+    (
+        parent_status,
+        parent_reason,
+        parent_summary,
+        parent_cost,
+        parent_duration_ms,
+        parent_files,
+        parent_blockers,
+        parent_followups,
+    ) = _task_result_fields(parent, parent_att, bridge)
+
+    parent_out = WorkflowParentResult(
+        task_id=parent.id,
+        title=parent.title,
+        status=parent_status,
+        terminal_reason=parent_reason,
+        summary=parent_summary,
+        cost_usd=parent_cost,
+        duration_ms=parent_duration_ms,
+    )
+
+    children_out: list[WorkflowChildResult] = []
+    agg_files_by_path: dict[str, FileChange] = {
+        fc.path: FileChange(path=fc.path, change=fc.change)  # type: ignore[arg-type]
+        for fc in parent_files
+    }
+    agg_blockers: list[str] = list(parent_blockers)
+    agg_followups: list[str] = list(parent_followups)
+    starts: list[str] = []
+    ends: list[str] = []
+    total_cost = parent_cost
+
+    history = bridge.list_attempt_history(parent.id) if bridge is not None else []
+    if history:
+        last = history[-1]
+        if last.get("started_at"):
+            starts.append(last["started_at"])
+        if last.get("ended_at"):
+            ends.append(last["ended_at"])
+
+    if hasattr(tracker, "all"):
+        for child in tracker.all():
+            child_parent = _extract_parent_id_from_labels(child.labels)
+            if child_parent != parent.id:
+                continue
+            child_att = state.orch._attempts.get(child.id)  # noqa: SLF001
+            (
+                c_status,
+                c_reason,
+                c_summary,
+                c_cost,
+                c_duration_ms,
+                c_files,
+                c_blockers,
+                c_followups,
+            ) = _task_result_fields(child, child_att, bridge)
+            children_out.append(
+                WorkflowChildResult(
+                    task_id=child.id,
+                    title=child.title,
+                    status=c_status,
+                    terminal_reason=c_reason,
+                    summary=c_summary,
+                    cost_usd=c_cost,
+                    duration_ms=c_duration_ms,
+                )
+            )
+            for fc in c_files:
+                agg_files_by_path[fc.path] = FileChange(
+                    path=fc.path, change=fc.change,  # type: ignore[arg-type]
+                )
+            for b in c_blockers:
+                if b not in agg_blockers:
+                    agg_blockers.append(b)
+            for f in c_followups:
+                if f not in agg_followups:
+                    agg_followups.append(f)
+            total_cost += c_cost
+            ch_history = bridge.list_attempt_history(child.id) if bridge is not None else []
+            if ch_history:
+                last = ch_history[-1]
+                if last.get("started_at"):
+                    starts.append(last["started_at"])
+                if last.get("ended_at"):
+                    ends.append(last["ended_at"])
+
+    children_out.sort(key=lambda c: c.task_id)
+
+    statuses: list[TaskStatus] = [parent_status] + [c.status for c in children_out]
+    rollup = _rollup_status(statuses)
+    counts: dict[str, int] = {}
+    for s in statuses:
+        counts[s] = counts.get(s, 0) + 1
+
+    duration_ms: Optional[int] = None
+    if starts and ends:
+        try:
+            duration_ms = _ms_between(
+                min(datetime.fromisoformat(s) for s in starts),
+                max(datetime.fromisoformat(e) for e in ends),
+            )
+        except Exception:  # noqa: BLE001
+            duration_ms = None
+
+    return WorkflowResultOut(
+        task_id=parent.id,
+        status=rollup,
+        trace_id=_extract_trace_id_from_labels(parent.labels),
+        detailed_url=_public_url(state, parent.id),
+        parent=parent_out,
+        children=children_out,
+        aggregate=WorkflowAggregate(
+            cost_usd=total_cost,
+            duration_ms=duration_ms,
+            files_changed=list(agg_files_by_path.values()),
+            blockers=agg_blockers,
+            follow_ups=agg_followups,
+            counts=counts,
+        ),
+    )
