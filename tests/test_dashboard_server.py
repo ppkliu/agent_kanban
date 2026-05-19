@@ -21,6 +21,7 @@ from symphony_mvp import (
 )
 from symphony_mvp.dashboard.bridge import DashboardBridge
 from symphony_mvp.dashboard.server import create_app
+from symphony_mvp.models import RunAttempt, RunState
 
 
 WORKFLOW_TEMPLATE = """---
@@ -459,6 +460,51 @@ def test_websocket_emits_periodic_heartbeat(app_ctx, monkeypatch) -> None:
         payload = _recv_until_type(ws, "heartbeat")
         assert isinstance(payload["server_time"], str)
         assert payload["orchestrator_ticks"] == 7
+
+
+def test_websocket_heartbeat_payload_marks_idle_when_no_active_attempts(
+    app_ctx, monkeypatch
+) -> None:
+    """No CLAIMED/RUNNING attempts → heartbeat reports `idle=true` and
+    the idle interval. Drives the SPA's stale-threshold scaling."""
+    from symphony_mvp.dashboard import server as server_mod
+
+    monkeypatch.setattr(server_mod, "_HEARTBEAT_ACTIVE_S", 0.05)
+    monkeypatch.setattr(server_mod, "_HEARTBEAT_IDLE_S", 0.07)
+    # No attempts in orch._attempts → idle.
+    app_ctx["orch"]._attempts.clear()  # noqa: SLF001
+
+    client = app_ctx["client"]
+    with client.websocket_connect("/api/v1/events") as ws:
+        payload = _recv_until_type(ws, "heartbeat")
+        assert payload["idle"] is True
+        assert payload["next_heartbeat_after_s"] == pytest.approx(0.07)
+
+
+def test_websocket_heartbeat_payload_marks_active_when_attempt_running(
+    app_ctx, monkeypatch
+) -> None:
+    """An attempt in RUNNING state → heartbeat reports `idle=false` and
+    the active interval. The reverse case proves the helper actually
+    inspects orchestrator state per emission, not at WS-open time."""
+    from symphony_mvp.dashboard import server as server_mod
+
+    monkeypatch.setattr(server_mod, "_HEARTBEAT_ACTIVE_S", 0.05)
+    monkeypatch.setattr(server_mod, "_HEARTBEAT_IDLE_S", 0.07)
+    now = datetime.now(timezone.utc)
+    app_ctx["orch"]._attempts["id-busy"] = RunAttempt(  # noqa: SLF001
+        issue_id="id-busy",
+        attempt_number=1,
+        state=RunState.RUNNING,
+        started_at=now,
+        last_event_at=now,
+    )
+
+    client = app_ctx["client"]
+    with client.websocket_connect("/api/v1/events") as ws:
+        payload = _recv_until_type(ws, "heartbeat")
+        assert payload["idle"] is False
+        assert payload["next_heartbeat_after_s"] == pytest.approx(0.05)
 
 
 def test_websocket_heartbeat_reflects_growing_tick_count(

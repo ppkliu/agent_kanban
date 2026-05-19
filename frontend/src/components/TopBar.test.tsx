@@ -101,6 +101,33 @@ describe("TopBar", () => {
     expect(dot).toHaveClass("bg-rose-500");
   });
 
+  it("idle-mode (150s cadence) tolerates 120s-old heartbeat as healthy", () => {
+    // 120s old is comfortably under the dynamic amber threshold of
+    // 2 × 150s = 300s, so the chip stays green. Without dynamic
+    // scaling this would have tripped rose at 90s.
+    useStore.setState({
+      lastHeartbeatAt: Date.now() - 120_000,
+      lastHeartbeatIntervalS: 150,
+      lastIdle: true,
+    });
+    render(<TopBar />);
+    const dot = document.querySelector(".rounded-full");
+    expect(dot).toHaveClass("bg-emerald-400");
+    expect(dot?.getAttribute("title")).toContain("idle");
+  });
+
+  it("active-mode (15s cadence) still goes rose at 100s-old heartbeat", () => {
+    // Active stale threshold = 6 × 15s = 90s; 100s exceeds it.
+    useStore.setState({
+      lastHeartbeatAt: Date.now() - 100_000,
+      lastHeartbeatIntervalS: 15,
+      lastIdle: false,
+    });
+    render(<TopBar />);
+    const dot = document.querySelector(".rounded-full");
+    expect(dot).toHaveClass("bg-rose-500");
+  });
+
   it("max_concurrent inline edit + Enter triggers patchConfig", async () => {
     const user = userEvent.setup();
     render(<TopBar />);
