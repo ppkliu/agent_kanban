@@ -441,3 +441,40 @@ def test_websocket_filter_project_default_includes_untagged_legacy(
         payload = _recv_until_type(ws, "agent_event")
         assert payload["issue_id"] == "id-MT-1"
         assert payload["event"]["data"]["text"] == "legacy"
+
+
+def test_websocket_emits_periodic_heartbeat(app_ctx, monkeypatch) -> None:
+    """Phase F — every open WS receives a heartbeat carrying
+    `server_time` + `orchestrator_ticks`. Speed the interval up so the
+    test doesn't wait the production 15s."""
+    from symphony_mvp.dashboard import server as server_mod
+
+    monkeypatch.setattr(server_mod, "_HEARTBEAT_INTERVAL_S", 0.05)
+    # Make sure tick_count is non-zero so the assertion is meaningful.
+    app_ctx["orch"].tick_count = 7
+
+    client = app_ctx["client"]
+    with client.websocket_connect("/api/v1/events") as ws:
+        payload = _recv_until_type(ws, "heartbeat")
+        assert isinstance(payload["server_time"], str)
+        assert payload["orchestrator_ticks"] == 7
+
+
+def test_websocket_heartbeat_reflects_growing_tick_count(
+    app_ctx, monkeypatch
+) -> None:
+    """Two heartbeats with an orchestrator tick in between — the second
+    must observe the bumped tick count, proving the heartbeat reads the
+    live value (not a cached snapshot)."""
+    from symphony_mvp.dashboard import server as server_mod
+
+    monkeypatch.setattr(server_mod, "_HEARTBEAT_INTERVAL_S", 0.05)
+    app_ctx["orch"].tick_count = 100
+
+    client = app_ctx["client"]
+    with client.websocket_connect("/api/v1/events") as ws:
+        first = _recv_until_type(ws, "heartbeat")
+        app_ctx["orch"].tick_count = 105
+        second = _recv_until_type(ws, "heartbeat")
+        assert first["orchestrator_ticks"] == 100
+        assert second["orchestrator_ticks"] >= 105

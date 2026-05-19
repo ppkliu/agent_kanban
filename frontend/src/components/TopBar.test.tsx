@@ -76,6 +76,31 @@ describe("TopBar", () => {
     expect(dot).toHaveClass("bg-emerald-400");
   });
 
+  it("connection dot turns amber when heartbeat is stale-ish (>30s)", () => {
+    // Heartbeat ~60s old → between AMBER and STALE thresholds.
+    useStore.setState({ lastHeartbeatAt: Date.now() - 60_000 });
+    render(<TopBar />);
+    const dot = document.querySelector(".rounded-full");
+    expect(dot).toHaveClass("bg-amber-400");
+  });
+
+  it("connection dot turns rose when heartbeat is stale (>90s)", () => {
+    useStore.setState({ lastHeartbeatAt: Date.now() - 120_000 });
+    render(<TopBar />);
+    const dot = document.querySelector(".rounded-full");
+    expect(dot).toHaveClass("bg-rose-500");
+  });
+
+  it("connection dot reflects closed WS regardless of heartbeat age", () => {
+    useStore.setState({
+      status: "closed",
+      lastHeartbeatAt: Date.now(), // fresh, but WS is closed
+    });
+    render(<TopBar />);
+    const dot = document.querySelector(".rounded-full");
+    expect(dot).toHaveClass("bg-rose-500");
+  });
+
   it("max_concurrent inline edit + Enter triggers patchConfig", async () => {
     const user = userEvent.setup();
     render(<TopBar />);
