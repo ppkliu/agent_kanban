@@ -62,10 +62,27 @@ logger = logging.getLogger(__name__)
 # Seconds between WebSocket heartbeat messages. Dashboard SPAs treat
 # missing heartbeats as the primary "backend unhealthy" signal; the
 # `/healthz` REST endpoint is a fallback for docker-compose / k8s probes
-# that can't speak WebSocket. Kept short relative to typical reverse-proxy
-# idle timeouts (60s+) so the connection never goes silent enough to be
-# culled.
-_HEARTBEAT_INTERVAL_S = 15.0
+# that can't speak WebSocket. Active cadence is short relative to typical
+# reverse-proxy idle timeouts (60s+) so the connection never goes silent
+# enough to be culled. Idle cadence is well below ~5min so a load
+# balancer's mid-tier idle timeout still keeps the WS warm.
+_HEARTBEAT_ACTIVE_S = 15.0
+_HEARTBEAT_IDLE_S = 150.0
+
+
+def _compute_heartbeat_interval(orchestrator: "Orchestrator") -> float:
+    """Return the active or idle heartbeat interval depending on whether
+    any attempt is currently in flight. RETRY_QUEUED counts as active so
+    backoff transitions surface quickly on the dashboard."""
+    try:
+        for att in orchestrator._attempts.values():  # noqa: SLF001
+            if att.state in (RunState.CLAIMED, RunState.RUNNING):
+                return _HEARTBEAT_ACTIVE_S
+    except Exception:  # noqa: BLE001
+        # If the dict is mutated mid-iteration we tolerate a stale read;
+        # the next heartbeat will reflect the up-to-date state.
+        return _HEARTBEAT_ACTIVE_S
+    return _HEARTBEAT_IDLE_S
 
 # ---------------------------------------------------------------------------
 # App state container
@@ -1167,20 +1184,25 @@ def create_app(
             )
 
         async def _heartbeat_loop() -> None:
-            """Phase F — push a heartbeat into the per-WS queue every
-            ``_HEARTBEAT_INTERVAL_S``. Dashboard SPAs use this (not
+            """Phase F — push a heartbeat into the per-WS queue at the
+            dynamic active/idle cadence. Dashboard SPAs use this (not
             ``/healthz``) as the primary liveness signal: process is up
             *and* the orchestrator main loop is ticking. Survives a
             full-queue burst by silently dropping — the next heartbeat
-            will arrive in ~15 s anyway."""
+            will arrive within the chosen interval."""
             try:
                 while True:
-                    await asyncio.sleep(_HEARTBEAT_INTERVAL_S)
+                    interval = _compute_heartbeat_interval(orchestrator)
+                    await asyncio.sleep(interval)
                     payload = {
                         "type": "heartbeat",
                         "server_time": datetime.now(timezone.utc).isoformat(),
                         "orchestrator_ticks": getattr(
                             orchestrator, "tick_count", 0
+                        ),
+                        "idle": interval >= _HEARTBEAT_IDLE_S,
+                        "next_heartbeat_after_s": _compute_heartbeat_interval(
+                            orchestrator
                         ),
                     }
                     try:

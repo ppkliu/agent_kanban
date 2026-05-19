@@ -449,7 +449,8 @@ def test_websocket_emits_periodic_heartbeat(app_ctx, monkeypatch) -> None:
     test doesn't wait the production 15s."""
     from symphony_mvp.dashboard import server as server_mod
 
-    monkeypatch.setattr(server_mod, "_HEARTBEAT_INTERVAL_S", 0.05)
+    monkeypatch.setattr(server_mod, "_HEARTBEAT_ACTIVE_S", 0.05)
+    monkeypatch.setattr(server_mod, "_HEARTBEAT_IDLE_S", 0.05)
     # Make sure tick_count is non-zero so the assertion is meaningful.
     app_ctx["orch"].tick_count = 7
 
@@ -468,7 +469,8 @@ def test_websocket_heartbeat_reflects_growing_tick_count(
     live value (not a cached snapshot)."""
     from symphony_mvp.dashboard import server as server_mod
 
-    monkeypatch.setattr(server_mod, "_HEARTBEAT_INTERVAL_S", 0.05)
+    monkeypatch.setattr(server_mod, "_HEARTBEAT_ACTIVE_S", 0.05)
+    monkeypatch.setattr(server_mod, "_HEARTBEAT_IDLE_S", 0.05)
     app_ctx["orch"].tick_count = 100
 
     client = app_ctx["client"]
