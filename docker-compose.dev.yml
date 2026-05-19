@@ -53,10 +53,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      # /healthz is the liveness backstop only — primary signal is the WS
-      # heartbeat consumed by the dashboard SPA.
+      # /healthz is the liveness backstop only — primary signal is the
+      # WS heartbeat (15s active / 150s idle) consumed by the dashboard
+      # SPA. 900s = 15 min matches the production compose file.
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:7957/healthz').status == 200 else 1)"]
-      interval: 60s
+      interval: 900s
       timeout: 5s
       retries: 3
       start_period: 15s
