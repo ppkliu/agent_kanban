@@ -10,17 +10,20 @@ import BackendRunnerSettings from "./BackendRunnerSettings";
 import ProjectSelector from "./ProjectSelector";
 import TracePanel from "./TracePanel";
 
-// Thresholds against `Date.now() - lastHeartbeatAt`. Backend pushes one
-// heartbeat every ~15s; we tolerate one drop (30s) before warning amber,
-// then declare the WS stale at 90s.
-const HEARTBEAT_AMBER_MS = 30_000;
-const HEARTBEAT_STALE_MS = 90_000;
+// Stale thresholds scale to whichever cadence the server reported with
+// the most recent heartbeat. Active mode (15s) → amber at 30s, rose at
+// 90s. Idle mode (150s) → amber at 300s, rose at 900s. Fallback values
+// apply only before the first heartbeat lands (cold WS).
+const HEARTBEAT_AMBER_FALLBACK_MS = 30_000;
+const HEARTBEAT_STALE_FALLBACK_MS = 90_000;
 
 export default function TopBar() {
   const status = useStore((s) => s.status);
   const snapshot = useStore((s) => s.snapshot);
   const lastHeartbeatAt = useStore((s) => s.lastHeartbeatAt);
   const lastOrchestratorTicks = useStore((s) => s.lastOrchestratorTicks);
+  const lastIdle = useStore((s) => s.lastIdle);
+  const lastHeartbeatIntervalS = useStore((s) => s.lastHeartbeatIntervalS);
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 5_000);
@@ -30,6 +33,15 @@ export default function TopBar() {
   // Derive WS health: closed WS dominates; otherwise the heartbeat age decides.
   const heartbeatAgeMs =
     lastHeartbeatAt != null ? now - lastHeartbeatAt : null;
+  const amberMs =
+    lastHeartbeatIntervalS != null
+      ? lastHeartbeatIntervalS * 2 * 1000
+      : HEARTBEAT_AMBER_FALLBACK_MS;
+  const staleMs =
+    lastHeartbeatIntervalS != null
+      ? lastHeartbeatIntervalS * 6 * 1000
+      : HEARTBEAT_STALE_FALLBACK_MS;
+  const idleSuffix = lastIdle ? " · idle" : "";
   let wsHealth: "ok" | "warn" | "bad";
   let wsTitle: string;
   if (status === "closed") {
@@ -41,15 +53,15 @@ export default function TopBar() {
   } else if (heartbeatAgeMs == null) {
     wsHealth = "warn";
     wsTitle = "WebSocket open · waiting for first heartbeat";
-  } else if (heartbeatAgeMs > HEARTBEAT_STALE_MS) {
+  } else if (heartbeatAgeMs > staleMs) {
     wsHealth = "bad";
-    wsTitle = `WebSocket stale · last heartbeat ${Math.round(heartbeatAgeMs / 1000)}s ago (orchestrator may be stuck)`;
-  } else if (heartbeatAgeMs > HEARTBEAT_AMBER_MS) {
+    wsTitle = `WebSocket stale · last heartbeat ${Math.round(heartbeatAgeMs / 1000)}s ago (orchestrator may be stuck)${idleSuffix}`;
+  } else if (heartbeatAgeMs > amberMs) {
     wsHealth = "warn";
-    wsTitle = `WebSocket open · heartbeat ${Math.round(heartbeatAgeMs / 1000)}s old`;
+    wsTitle = `WebSocket open · heartbeat ${Math.round(heartbeatAgeMs / 1000)}s old${idleSuffix}`;
   } else {
     wsHealth = "ok";
-    wsTitle = `WebSocket healthy · heartbeat ${Math.round(heartbeatAgeMs / 1000)}s ago${lastOrchestratorTicks != null ? ` · ticks=${lastOrchestratorTicks}` : ""}`;
+    wsTitle = `WebSocket healthy · heartbeat ${Math.round(heartbeatAgeMs / 1000)}s ago${lastOrchestratorTicks != null ? ` · ticks=${lastOrchestratorTicks}` : ""}${idleSuffix}`;
   }
   const toggleWf = useStore((s) => s.toggleWorkflowEditor);
   const wfOpen = useStore((s) => s.workflowEditorOpen);

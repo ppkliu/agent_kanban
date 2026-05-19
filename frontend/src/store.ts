@@ -30,9 +30,14 @@ interface Store {
   notice: { kind: "info" | "error"; text: string } | null;
   // Phase F WS heartbeat: epoch-ms when the last server heartbeat arrived,
   // plus the orchestrator tick counter it reported. Consumers compare
-  // `Date.now() - lastHeartbeatAt` to detect a stale WS.
+  // `Date.now() - lastHeartbeatAt` to detect a stale WS. The interval the
+  // server reports (`next_heartbeat_after_s`) feeds dynamic stale
+  // thresholds so idle-mode (150s cadence) does not trip the warning that
+  // is sized for active-mode (15s cadence).
   lastHeartbeatAt: number | null;
   lastOrchestratorTicks: number | null;
+  lastIdle: boolean | null;
+  lastHeartbeatIntervalS: number | null;
 
   // ---- Actions ----
   init: () => void;
@@ -85,6 +90,8 @@ export const useStore = create<Store>((set) => ({
   notice: null,
   lastHeartbeatAt: null,
   lastOrchestratorTicks: null,
+  lastIdle: null,
+  lastHeartbeatIntervalS: null,
 
   init: () => {
     dashboardSocket.onStatus((s) => set({ status: s }));
@@ -129,6 +136,8 @@ export const useStore = create<Store>((set) => ({
         set({
           lastHeartbeatAt: Date.now(),
           lastOrchestratorTicks: m.orchestrator_ticks,
+          lastIdle: m.idle,
+          lastHeartbeatIntervalS: m.next_heartbeat_after_s,
         });
       }
       // fsm_transition is informational here — the server follows it with a
