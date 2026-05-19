@@ -360,6 +360,72 @@ class ListTasksOut(BaseModel):
     tasks: list[TaskSummaryOut]
 
 
+class WorkflowResultIn(BaseModel):
+    task_id: str = Field(
+        description=(
+            "Parent task id. Use the `task_id` returned by "
+            "`submit_coding_task` (Path A) or by the decompose-pending "
+            "parent (Path B). The rollup walks one level — direct "
+            "children only — since both fan-out paths produce flat "
+            "subtask graphs."
+        ),
+    )
+
+
+class WorkflowChildResult(BaseModel):
+    task_id: str
+    title: str
+    status: TaskStatus
+    terminal_reason: Optional[str] = None
+    summary: Optional[str] = None
+    cost_usd: float = 0.0
+    duration_ms: Optional[int] = None
+
+
+class WorkflowAggregate(BaseModel):
+    cost_usd: float = 0.0
+    duration_ms: Optional[int] = None
+    files_changed: list[FileChange] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+    follow_ups: list[str] = Field(default_factory=list)
+    counts: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Per-status counts across parent + children. Keys are the same "
+            "literals as TaskStatus. Useful for upstream agents to render "
+            "a progress bar without iterating the children list."
+        ),
+    )
+
+
+class WorkflowParentResult(BaseModel):
+    task_id: str
+    title: str
+    status: TaskStatus
+    terminal_reason: Optional[str] = None
+    summary: Optional[str] = None
+    cost_usd: float = 0.0
+    duration_ms: Optional[int] = None
+
+
+class WorkflowResultOut(BaseModel):
+    task_id: str
+    status: TaskStatus = Field(
+        description=(
+            "Rolled-up status across parent + children. Precedence: "
+            "`blocked_for_human` > `failed` > `running` (incl. pending) > "
+            "`cancelled` (only when ALL are cancelled) > `done` (only when "
+            "ALL are done). Callers can poll the same endpoint until "
+            "status terminalises rather than juggling two endpoints."
+        ),
+    )
+    trace_id: Optional[str] = None
+    detailed_url: str
+    parent: WorkflowParentResult
+    children: list[WorkflowChildResult] = Field(default_factory=list)
+    aggregate: WorkflowAggregate
+
+
 class InspectRepoIn(BaseModel):
     repo: str = Field(description="Repo id returned by list_repos")
 
@@ -433,6 +499,31 @@ def _extract_project_id_from_labels(labels: list[str]) -> str | None:
         if label.startswith(_PROJECT_LABEL_PREFIX):
             return label[len(_PROJECT_LABEL_PREFIX):]
     return None
+
+
+def _rollup_status(statuses: list[TaskStatus]) -> TaskStatus:
+    """Phase D5 — collapse a list of per-task statuses into one rollup.
+
+    Precedence (most actionable wins): blocked_for_human > failed >
+    running (incl. pending) > cancelled (only when ALL are cancelled) >
+    done (only when ALL are done). Empty input degenerates to ``pending``
+    so callers see a stable shape before any work has been observed."""
+    if not statuses:
+        return "pending"
+    if "blocked_for_human" in statuses:
+        return "blocked_for_human"
+    if "failed" in statuses:
+        return "failed"
+    if "running" in statuses or "pending" in statuses:
+        return "running"
+    if all(s == "cancelled" for s in statuses):
+        return "cancelled"
+    if all(s == "done" for s in statuses):
+        return "done"
+    # Mixed terminal states (e.g. one cancelled + one done): degrade to
+    # ``failed`` so the operator sees that the workflow did not fully
+    # succeed.
+    return "failed"
 
 
 def _state(request: Request) -> "DashboardAppState":
