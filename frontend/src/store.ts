@@ -28,6 +28,11 @@ interface Store {
   workflowEditorOpen: boolean;
   filters: Filters;
   notice: { kind: "info" | "error"; text: string } | null;
+  // Phase F WS heartbeat: epoch-ms when the last server heartbeat arrived,
+  // plus the orchestrator tick counter it reported. Consumers compare
+  // `Date.now() - lastHeartbeatAt` to detect a stale WS.
+  lastHeartbeatAt: number | null;
+  lastOrchestratorTicks: number | null;
 
   // ---- Actions ----
   init: () => void;
@@ -78,6 +83,8 @@ export const useStore = create<Store>((set) => ({
   workflowEditorOpen: false,
   filters: { text: "", agent: null, priority: null, label: null },
   notice: null,
+  lastHeartbeatAt: null,
+  lastOrchestratorTicks: null,
 
   init: () => {
     dashboardSocket.onStatus((s) => set({ status: s }));
@@ -118,6 +125,11 @@ export const useStore = create<Store>((set) => ({
         set({ notice: { kind: "info", text: "Config reloaded" } });
       } else if (m.type === "workflow_reloaded") {
         set({ notice: { kind: "info", text: "WORKFLOW.md reloaded" } });
+      } else if (m.type === "heartbeat") {
+        set({
+          lastHeartbeatAt: Date.now(),
+          lastOrchestratorTicks: m.orchestrator_ticks,
+        });
       }
       // fsm_transition is informational here — the server follows it with a
       // state_snapshot push that updates `snapshot` for us.

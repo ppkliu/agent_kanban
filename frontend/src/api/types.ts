@@ -236,4 +236,13 @@ export type WSMessage =
     }
   | { type: "config_changed"; config: ConfigDTO }
   | { type: "workflow_reloaded"; ok: boolean; config: ConfigDTO }
-  | { type: "state_snapshot"; snapshot: StateSnapshot };
+  | { type: "state_snapshot"; snapshot: StateSnapshot }
+  | {
+      // Server pushes one heartbeat every ~15s on every open WS. SPAs treat
+      // missing heartbeats (not `/healthz` polling) as the primary unhealthy
+      // signal. `orchestrator_ticks` increments monotonically so a stuck
+      // main loop is detectable even when the WS itself stays alive.
+      type: "heartbeat";
+      server_time: string;
+      orchestrator_ticks: number;
+    };

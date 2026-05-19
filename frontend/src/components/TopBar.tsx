@@ -10,9 +10,47 @@ import BackendRunnerSettings from "./BackendRunnerSettings";
 import ProjectSelector from "./ProjectSelector";
 import TracePanel from "./TracePanel";
 
+// Thresholds against `Date.now() - lastHeartbeatAt`. Backend pushes one
+// heartbeat every ~15s; we tolerate one drop (30s) before warning amber,
+// then declare the WS stale at 90s.
+const HEARTBEAT_AMBER_MS = 30_000;
+const HEARTBEAT_STALE_MS = 90_000;
+
 export default function TopBar() {
   const status = useStore((s) => s.status);
   const snapshot = useStore((s) => s.snapshot);
+  const lastHeartbeatAt = useStore((s) => s.lastHeartbeatAt);
+  const lastOrchestratorTicks = useStore((s) => s.lastOrchestratorTicks);
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Derive WS health: closed WS dominates; otherwise the heartbeat age decides.
+  const heartbeatAgeMs =
+    lastHeartbeatAt != null ? now - lastHeartbeatAt : null;
+  let wsHealth: "ok" | "warn" | "bad";
+  let wsTitle: string;
+  if (status === "closed") {
+    wsHealth = "bad";
+    wsTitle = "WebSocket closed";
+  } else if (status === "connecting") {
+    wsHealth = "warn";
+    wsTitle = "WebSocket connecting…";
+  } else if (heartbeatAgeMs == null) {
+    wsHealth = "warn";
+    wsTitle = "WebSocket open · waiting for first heartbeat";
+  } else if (heartbeatAgeMs > HEARTBEAT_STALE_MS) {
+    wsHealth = "bad";
+    wsTitle = `WebSocket stale · last heartbeat ${Math.round(heartbeatAgeMs / 1000)}s ago (orchestrator may be stuck)`;
+  } else if (heartbeatAgeMs > HEARTBEAT_AMBER_MS) {
+    wsHealth = "warn";
+    wsTitle = `WebSocket open · heartbeat ${Math.round(heartbeatAgeMs / 1000)}s old`;
+  } else {
+    wsHealth = "ok";
+    wsTitle = `WebSocket healthy · heartbeat ${Math.round(heartbeatAgeMs / 1000)}s ago${lastOrchestratorTicks != null ? ` · ticks=${lastOrchestratorTicks}` : ""}`;
+  }
   const toggleWf = useStore((s) => s.toggleWorkflowEditor);
   const wfOpen = useStore((s) => s.workflowEditorOpen);
   const setNotice = useStore((s) => s.setNotice);
@@ -42,13 +80,13 @@ export default function TopBar() {
       <div className="flex items-center gap-2">
         <div
           className={`w-2.5 h-2.5 rounded-full ${
-            status === "open"
+            wsHealth === "ok"
               ? "bg-emerald-400 animate-pulse"
-              : status === "connecting"
+              : wsHealth === "warn"
                 ? "bg-amber-400 animate-pulse"
                 : "bg-rose-500"
           }`}
-          title={`WebSocket: ${status}`}
+          title={wsTitle}
         />
         <span className="font-semibold tracking-tight">Symphony</span>
       </div>

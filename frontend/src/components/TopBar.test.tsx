@@ -43,6 +43,8 @@ beforeEach(() => {
       totals: { active_workers: 2, released_today: 7 },
     },
     workflowEditorOpen: false,
+    lastHeartbeatAt: Date.now(),
+    lastOrchestratorTicks: 42,
   });
   vi.clearAllMocks();
 });
