@@ -136,7 +136,24 @@
     EventsTab 增 `checkpoint` filter + 青綠色 `◆` icon;IssueCard 在
     `recentEvents` 最新 checkpoint 上頂一條 ticker。15 個新 test (13
     parser 解析器 + 2 orchestrator end-to-end)
-  - **D5 (待開)** — Cross-task rollup summary (`get_workflow_result` aggregator)
+  - **D5 (本批 commits,已落地)** — Cross-task rollup summary:新
+    Tool API endpoint `/api/v1/tools/get_workflow_result` 走一層
+    (parent + 直接 children — Path A 與 D2b 拆的都是 flat 子圖,
+    grandchildren 不在 D5 scope) 把 parent + children 合併成單一
+    response;新 pydantic models `WorkflowResultIn` /
+    `WorkflowChildResult` / `WorkflowAggregate` / `WorkflowParentResult`
+    / `WorkflowResultOut`;新 `_rollup_status` helper 把多個
+    `TaskStatus` collapse 成單一 rollup(優先序
+    `blocked_for_human > failed > running > cancelled > done`,混合
+    terminal 狀態 degrade 成 `failed`);新 `_task_result_fields`
+    helper 把單一 task 的 attempt history + events 萃取出
+    `(status, terminal_reason, summary, cost, duration_ms,
+    files_changed, blockers, follow_ups)` tuple;aggregate 內的
+    files_changed 用 dict 去重(同一個 path 留最後一次 change)、
+    blockers / follow_ups 用 list-with-dedupe、duration_ms 取
+    `max(end) - min(start)`、cost_usd 直接相加;partial rollup 不會
+    回 409,client 可以同一個 endpoint 一直 poll。7 個新 test (5 rollup
+    優先序組合 + 1 not-found + 1 trace_id/detailed_url smoke)
   - 「定時 self-trigger」這條已由現有 30s polling loop 覆蓋,只剩文件補上
 - [ ] **Multi-project foundation (Phase E — 5-phase roadmap)** — 多 project /
   conversation 管理。詳細 plan 在

@@ -39,6 +39,7 @@ the design rationale.
 | `POST` | `/api/v1/tools/cancel_task` | Abort a running task (idempotent) |
 | `POST` | `/api/v1/tools/resolve_human_block` | Unblock a task whose agent escalated via `[HUMAN_REQUIRED]` (records an operator hint + force-retries) |
 | `POST` | `/api/v1/tools/list_tasks` | Enumerate Tool API tasks with optional `parent_task_id` + `status` filter |
+| `POST` | `/api/v1/tools/get_workflow_result` | Aggregate one parent + its direct children into one rollup (D5) |
 
 ### Example round-trip
 
@@ -150,6 +151,17 @@ For a runnable end-to-end demo using only the stdlib see
   attempt are expected. Markers inside fenced code blocks
   (`` ``` `` / `~~~`) are ignored — quoted source/docs do not spoof
   progress.
+- **`get_workflow_result`** (D5): aggregates a parent task + its
+  **direct children** (one level — Path A and D2b both produce flat
+  subgraphs) into a single rollup response. Body `{task_id}` (the
+  parent). Returns `parent` + `children: [...]` + `aggregate: {cost_usd,
+  duration_ms, files_changed (deduped, latest-change-per-path wins),
+  blockers, follow_ups, counts: {per-status counts}}` and a rollup
+  `status`. Precedence: `blocked_for_human` > `failed` > `running` (incl.
+  pending) > `cancelled` (only when ALL are cancelled) > `done` (only
+  when ALL are done). Partial rollups are returned — callers poll this
+  same endpoint until the rolled-up `status` terminalises, no need to
+  juggle two endpoints. 404 only when `task_id` is unknown.
 - **`status`** (in `check_task_status`): `pending` / `running` / `done` /
   `failed` / `cancelled` / `blocked_for_human` (Phase D3 — agent declared
   `[HUMAN_REQUIRED]` in its final message; unblock via

@@ -51,7 +51,8 @@ MVP 框架的契約:**對上游 agent 暴露 6 個語意化 tool、opt-in dashbo
 | Phase D2b Symphony 端拆解 — `submit_coding_task` 收 `decompose=true`,parent 跑完後 parse 它的 plan-mode 輸出再 fan-out children(走跟 Path A 一樣的流程);環境變數 `SYMPHONY_DECOMPOSE_ENABLED=0` 可全域關掉 | ✅ | 本批 commits | `pytest tests/test_tool_api.py tests/test_decompose.py -k decompose` |
 | Phase D3 NEEDS_HUMAN 升級 — agent 用 `[HUMAN_REQUIRED] <reason>` 結束 turn → orchestrator 標 `needs_human`(fenced code block 內標記會被忽略);status 變 `blocked_for_human`;新 `resolve_human_block` 端點記 hint + force-retry | ✅ | 本批 commits | `pytest tests/test_escalation.py tests/test_tool_api.py -k 'human or needs_human'` |
 | Phase D4 CHECKPOINT 進度回報 — agent 在 assistant 訊息中放 `[CHECKPOINT] <msg>` 或 `[CHECKPOINT step=2/5] <msg>`,orchestrator 掃 MESSAGE_DELTA 文字後 fan 出 synthetic `checkpoint` 事件;events tab + kanban card 即時顯示進度(fenced 內的 marker 會被忽略) | ✅ | 本批 commits | `pytest tests/test_checkpoint.py tests/test_orchestrator.py -k checkpoint` |
-| 自含測試套件 (不需 LLM / 不需 GitHub) | ✅ | 287 tests | `.venv/bin/python -m pytest` |
+| Phase D5 跨 task 結果合併 — 新 `get_workflow_result` Tool API 端點把一個 parent + 它的直接 children(Path A 或 D2b 拆出來的子圖)合併成單一 response,含 per-status 計數、加總 cost、wall-clock duration、去重後的 files / blockers / follow-ups;status 優先序 `blocked_for_human > failed > running > cancelled > done`;支援 partial rollup(client 用同一個 endpoint 持續 poll 即可) | ✅ | 本批 commits | `pytest tests/test_tool_api.py -k workflow_result` |
+| 自含測試套件 (不需 LLM / 不需 GitHub) | ✅ | 294 tests | `.venv/bin/python -m pytest` |
 | REST + WebSocket Bearer 認證 | ✅ | `dashboard/server.py:_require_auth` | `DASHBOARD_API_KEY=$(openssl rand -hex 32) docker compose up -d` |
 
 **結論**:README 跟使用說明書裡的每個行為承諾,**都有 code 或 test 撐住**
